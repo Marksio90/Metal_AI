@@ -11,6 +11,20 @@ Usage:
                        price_source="cennik_miesięczny")
     errors = form.validate()   # [] if ready
     item = form.build_quote_item()
+
+For SHEET family (nesting step has no candidate machines):
+    form = CalcForm.from_template(SHEET, item_name="Blacha DC01 2mm", quantity=100)
+    form.fill_nesting_result(NestingResult(
+        n_sheets=10,
+        sheet_format="2000x1000",
+        cutting_time_per_sheet_s=280.0,
+        machine_time_per_sheet_s=320.0,
+        material_utilization_pct=82.5,
+        setup_per_batch_s=300.0,
+    ))
+    times = form.suggested_laser_times()
+    form.fill_operation(OperationType.LASER_CUTTING, "Laser Fiber do blach",
+                        setup_sec=times["setup_sec"], cycle_sec=times["cycle_sec"])
 """
 
 from __future__ import annotations
@@ -26,6 +40,55 @@ from metal_calc.engine.calculation import (
     QuoteItem,
 )
 from metal_calc.models.enums import OperationType
+
+
+# ---------------------------------------------------------------------------
+# Nesting result (SHEET family input)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class NestingResult:
+    """
+    Output from nesting software for one batch of sheet-metal parts.
+
+    n_sheets                  number of physical sheets consumed for the whole batch
+    sheet_format              e.g. "2000x1000" (mm)
+    cutting_time_per_sheet_s  net laser-on / punch-stroke time per sheet [s]
+    machine_time_per_sheet_s  total machine time per sheet including idle [s]
+    material_utilization_pct  area of parts / total sheet area × 100  [%]
+    setup_per_batch_s         one-off job setup + first-sheet loading time [s]
+    nesting_program           reference ID / file name of the nesting job
+    note                      free-text remark
+    """
+    n_sheets: int
+    sheet_format: str
+    cutting_time_per_sheet_s: float
+    machine_time_per_sheet_s: float
+    material_utilization_pct: float
+    setup_per_batch_s: float = 0.0
+    nesting_program: str = ""
+    note: str = ""
+
+    def total_machine_time_s(self) -> float:
+        """Total machine time for the full batch: setup + n_sheets × per-sheet time."""
+        return self.setup_per_batch_s + self.machine_time_per_sheet_s * self.n_sheets
+
+    def suggested_laser_setup_sec(self) -> float:
+        """One-off batch setup for the OperationLine (loading + job start)."""
+        return self.setup_per_batch_s
+
+    def suggested_laser_cycle_sec(self, qty: int) -> float:
+        """
+        Per-piece amortized machine time for use in OperationLine.cycle_sec.
+
+        Formula: (n_sheets × machine_time_per_sheet_s) / qty
+        With quantity=qty the engine computes:
+            eff = setup_sec + cycle_sec * qty = setup_per_batch_s + n_sheets * machine_time_per_sheet_s
+        which equals the real total machine time.
+        """
+        if qty <= 0:
+            return 0.0
+        return (self.machine_time_per_sheet_s * self.n_sheets) / qty
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +150,7 @@ class CalcForm:
         self._materials: list[FilledMaterial] = []
         self._outside_services: list[FilledOutsideService] = []
         self._assumptions: list[AssumptionEntry] = []
+        self._nesting_result: NestingResult | None = None
         self.packaging_cost_zl: float = 0.0
         self.adjustment_zl: float = 0.0
 
@@ -153,6 +217,39 @@ class CalcForm:
             note=note,
         ))
 
+    def fill_nesting_result(self, result: NestingResult) -> None:
+        """
+        Register a nesting result for SHEET-family quotes.
+
+        Satisfies the mandatory NESTING routing step (which has no candidate
+        machines) and makes suggested_laser_times() available.
+        """
+        self._nesting_result = result
+
+    def suggested_laser_times(self) -> dict | None:
+        """
+        Return suggested setup_sec / cycle_sec for the LASER_CUTTING operation
+        derived from the registered NestingResult, or None if no nesting result.
+
+        Use the returned values in fill_operation(OperationType.LASER_CUTTING, ...):
+            times = form.suggested_laser_times()
+            form.fill_operation(OperationType.LASER_CUTTING, "Laser Fiber do blach",
+                                setup_sec=times["setup_sec"],
+                                cycle_sec=times["cycle_sec"])
+        """
+        r = self._nesting_result
+        if r is None:
+            return None
+        return {
+            "setup_sec": r.suggested_laser_setup_sec(),
+            "cycle_sec": r.suggested_laser_cycle_sec(self.quantity),
+            "n_sheets": r.n_sheets,
+            "sheet_format": r.sheet_format,
+            "material_utilization_pct": r.material_utilization_pct,
+            "total_machine_time_s": r.total_machine_time_s(),
+            "nesting_program": r.nesting_program,
+        }
+
     def fill_outside_service(
         self,
         service_name: str,
@@ -197,7 +294,14 @@ class CalcForm:
         if self.quantity <= 0:
             errors.append("Quantity must be a positive integer.")
         for step in self.template.mandatory_steps():
-            if step.op_type not in self._operations:
+            if not step.candidate_machines:
+                # Step has no machines (e.g. NESTING) — satisfied by a NestingResult.
+                if self._nesting_result is None:
+                    errors.append(
+                        f"Mandatory step {step.op_type.value!r} requires a NestingResult "
+                        "(call fill_nesting_result() before validate())."
+                    )
+            elif step.op_type not in self._operations:
                 errors.append(
                     f"Mandatory operation not filled: {step.op_type.value!r} "
                     f"(candidates: {list(step.candidate_machines)})"
