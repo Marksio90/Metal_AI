@@ -55,7 +55,7 @@ def _norm(value: str) -> str:
 
 
 _RULES: list[tuple[str, str, float]] = [
-    (r"\blaser\b.*\b(blacha|sheet)\b|\b(blacha|sheet)\b.*\blaser\b", "laser_sheet_cutting", 0.98),
+    (r"\blaser\b.*\b(blacha|sheet)\b|\b(blacha|sheet)\b.*\blaser\b|\bcia\w*\b.*\bblach\w*\b.*\blaser\b", "laser_sheet_cutting", 0.98),
     (r"\blaser\b.*\b(rur|profil|tube|profile)\b|\b(rur|profil|tube|profile)\b.*\blaser\b", "laser_tube_or_profile_cutting", 0.97),
     (r"\bciec\b.*\b(rur|profil)\b|\bsaw\b|\bpila\b", "saw_or_profile_cutting", 0.91),
     (r"\bgiec\b.*\b(blach|sheet)\b", "cnc_bending_sheet", 0.96),
