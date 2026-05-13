@@ -26,19 +26,29 @@ from app.schemas import (
     SaveRFQAnalysisRequest,
     EstimatorFeedbackRequest,
     FeedbackDiffResponse,
+<<<<<<< codex/build-rfq-input-layer
     AttachmentMetadataResponse,
+=======
+>>>>>>> main
     RiskFlagResponse,
 )
 from app.services.llm_service import BackendAPIError, LLMService, build_provider
 from app.db import Base, SessionLocal, engine
+<<<<<<< codex/build-rfq-input-layer
 from app.persistence_models import EstimatorFeedback, QuoteDraft, RFQ, RFQAttachmentMetadata
+=======
+from app.persistence_models import EstimatorFeedback, QuoteDraft, RFQ
+>>>>>>> main
 from metal_calc.engine.rfq_intake import check_rfq_completeness
 from metal_calc.engine.risk_rules import evaluate_rfq_risk_flags
 from metal_calc.costing import calculate_preliminary_cost, load_company_rates
 from metal_calc.models import CustomerInfo, FinishSpec, MaterialSpec, PartSpec, QuantityBreak, RFQInput, OperationType
 from metal_calc.routing import generate_route
+<<<<<<< codex/build-rfq-input-layer
 from pypdf import PdfReader
 from io import BytesIO
+=======
+>>>>>>> main
 
 
 class RFQExtractionResult(BaseModel):
@@ -338,6 +348,7 @@ def feedback_diff(rfq_id: str) -> FeedbackDiffResponse:
         return FeedbackDiffResponse(rfqId=rfq_id, aiSuggestion=ai_suggestion, humanCorrection=human, differences=diffs)
     finally:
         db.close()
+<<<<<<< codex/build-rfq-input-layer
 
 
 @app.post("/api/rfq/upload-attachment", response_model=AttachmentMetadataResponse)
@@ -385,3 +396,5 @@ async def upload_attachment(rfq_id: str = Form(...), file: UploadFile = File(...
         contentType=file.content_type or "application/octet-stream",
         extractedTextPreview=(extracted_text[:500] if extracted_text else None),
     )
+=======
+>>>>>>> main

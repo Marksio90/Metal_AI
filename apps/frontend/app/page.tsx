@@ -23,7 +23,10 @@ export default function HomePage() {
   const [quantity, setQuantity] = useState<number>(50);
   const [message, setMessage] = useState("Please quote 50 pcs from S235 steel, 3 mm sheet, laser cut, bent twice, powder coated black RAL 9005.");
   const [attachments, setAttachments] = useState("drawing.pdf");
+<<<<<<< codex/build-rfq-input-layer
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+=======
+>>>>>>> main
   const [result, setResult] = useState<RFQAnalyzeResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -53,6 +56,7 @@ export default function HomePage() {
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload.detail ?? "RFQ analysis failed.");
+<<<<<<< codex/build-rfq-input-layer
       }
       const analyzed = (await response.json()) as RFQAnalyzeResponse;
       setResult(analyzed);
@@ -63,6 +67,10 @@ export default function HomePage() {
         await fetch(`${API_BASE_URL}/api/rfq/upload-attachment`, { method: "POST", body: form });
       }
 
+=======
+      }
+      setResult((await response.json()) as RFQAnalyzeResponse);
+>>>>>>> main
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error.");
     } finally {
@@ -81,7 +89,10 @@ export default function HomePage() {
           <input className="w-full bg-slate-800 p-2 rounded" type="number" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} placeholder="Quantity" />
           <textarea className="w-full bg-slate-800 p-2 rounded min-h-36" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Paste RFQ text" />
           <input className="w-full bg-slate-800 p-2 rounded" value={attachments} onChange={(e) => setAttachments(e.target.value)} placeholder="Attachment placeholders (comma separated)" />
+<<<<<<< codex/build-rfq-input-layer
           <input className="w-full bg-slate-800 p-2 rounded" type="file" onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)} />
+=======
+>>>>>>> main
           <button className="bg-blue-600 px-4 py-2 rounded disabled:opacity-50" disabled={loading} onClick={analyze}>{loading ? "Analyzing..." : "Analyze RFQ"}</button>
           {error && <p className="text-red-400">{error}</p>}
         </section>
