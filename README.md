@@ -160,6 +160,14 @@ Jeśli ustawisz model nieobsługiwany przez dostawcę lub przez implementację b
 
 This repository is intentionally limited to a staged foundation implementation:
 
+### Historical intelligence foundation
+Metal_AI uses anonymized historical operation-time intelligence as a mandatory input to estimation and costing logic.
+The core chain is:
+
+`operation -> work center (brygada) -> historical time -> rate/overheads -> operation cost -> quote inputs`
+
+Private legacy Excel files remain local and confidential. Only normalized/anonymized schemas, formulas and synthetic fixtures are stored in Git.
+
 ### Stage 1 (implemented)
 - operation taxonomy
 - work center dictionary
