@@ -81,4 +81,5 @@ class RFQAnalyzeResponse(BaseModel):
     riskFlags: list[str]
     internalNotes: list[str]
     customerQuestions: list[str]
+    draftCustomerReply: str
     confidence: float

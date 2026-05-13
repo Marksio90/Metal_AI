@@ -153,6 +153,8 @@ async def analyze_rfq(payload: RFQAnalyzeRequest) -> RFQAnalyzeResponse:
     internal_notes = ["Deterministic post-processing applied to LLM extraction output."]
     confidence = 0.85 if not missing else 0.45
 
+    draft_reply = "Thank you for your RFQ. To prepare a reliable quotation, please provide: " + ", ".join(missing) + "." if missing else "Thank you for your RFQ. We have enough initial data and will send a quotation draft shortly."
+
     return RFQAnalyzeResponse(
         rfqId=rfq_id,
         detectedParts=extracted.detectedParts,
@@ -161,5 +163,6 @@ async def analyze_rfq(payload: RFQAnalyzeRequest) -> RFQAnalyzeResponse:
         riskFlags=risks,
         internalNotes=internal_notes,
         customerQuestions=customer_questions,
+        draftCustomerReply=draft_reply,
         confidence=confidence,
     )

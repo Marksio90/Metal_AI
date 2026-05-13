@@ -99,6 +99,7 @@ def test_rfq_analyze_valid_payload(test_client):
     assert data["rfqId"]
     assert data["missingInformation"] == []
     assert "laser_cutting" in data["suggestedRoute"]
+    assert "Thank you" in data["draftCustomerReply"]
 
 
 def test_rfq_analyze_incomplete_payload(test_client):
@@ -115,3 +116,4 @@ def test_rfq_analyze_incomplete_payload(test_client):
     data = response.json()
     assert "material" in data["missingInformation"]
     assert "drawing_attachment" in data["missingInformation"]
+    assert "please provide" in data["draftCustomerReply"].lower()
