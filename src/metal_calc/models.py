@@ -24,7 +24,7 @@ class CustomerInfo:
 
 @dataclass(slots=True)
 class MaterialSpec:
-    material_code: str
+    material_code: str  # S235, S355, stainless_steel, aluminum, unknown_material
     thickness_mm: float | None = None
 
 
