@@ -155,6 +155,47 @@ Jeśli ustawisz model nieobsługiwany przez dostawcę lub przez implementację b
 
 ---
 
+
+## Immediate Implementation Scope (Current)
+
+This repository is intentionally limited to a staged foundation implementation:
+
+### Historical intelligence foundation
+Metal_AI uses anonymized historical operation-time intelligence as a mandatory input to estimation and costing logic.
+The core chain is:
+
+`operation -> work center (brygada) -> historical time -> rate/overheads -> operation cost -> quote inputs`
+
+Private legacy Excel files remain local and confidential. Only normalized/anonymized schemas, formulas and synthetic fixtures are stored in Git.
+
+### Stage 1 (implemented)
+- operation taxonomy
+- work center dictionary
+- operation time baseline table
+- time estimation module
+- unit tests
+
+### Stage 2 (implemented)
+- deterministic costing formulas
+- example company rates config (`config/company_rates.example.json`)
+- operation cost calculation
+- batch cost calculation
+- unit tests
+
+### Stage 3 (implemented as skeleton)
+- legacy Excel importer skeleton (`src/metal_calc/importers/legacy_excel/`)
+- anonymizer skeleton
+- synthetic fixture(s)
+- README update
+
+### Explicitly out of scope in this stage
+- full SaaS platform implementation
+- authentication/authorization hardening rollout
+- Qdrant/vector database integration
+- full production database rollout
+- advanced dashboard suite
+- committing private Excel files or confidential customer/rate data
+
 ## Security notes
 
 - **Nigdy nie commituj kluczy API ani żadnych sekretów do repozytorium.**

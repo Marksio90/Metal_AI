@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from metal_calc.models import OperationType
+from metal_calc.knowledge import CANONICAL_OPERATION_TYPES, classify_operation
 
-SUPPORTED_OPERATIONS = {
-    OperationType.LASER_CUTTING,
-    OperationType.BENDING,
-    OperationType.WELDING,
-    OperationType.DEBURRING,
-    OperationType.PAINTING,
-    OperationType.GALVANIZING,
-    OperationType.ASSEMBLY,
-    OperationType.SUBCONTRACTING,
-    OperationType.MANUAL_REVIEW,
-}
+
+def list_canonical_operations() -> list[str]:
+    return list(CANONICAL_OPERATION_TYPES)
+
+
+def normalize_operation_name(original_operation_name: str, work_center: str | None = None) -> dict:
+    cls = classify_operation(original_operation_name, work_center)
+    return {
+        "originalOperationName": cls.originalOperationName,
+        "canonicalOperationType": cls.canonicalOperationType,
+        "workCenter": cls.workCenter,
+        "confidence": cls.confidence,
+    }

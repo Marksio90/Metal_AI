@@ -128,3 +128,19 @@ __pycache__/
 *.py[cod]
 
 !.env.example
+
+# Private/raw/confidential data directories
+/data/private/
+/data/raw/
+/data/imported/
+/data/confidential/
+
+# Spreadsheet/data dumps are blocked by default
+*.xls
+*.xlsx
+*.csv
+*.ods
+
+# Explicitly allow clearly fake examples/fixtures
+!*.example.xlsx
+!*.fixture.xlsx
