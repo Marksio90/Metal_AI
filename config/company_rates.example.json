@@ -1,18 +1,45 @@
 {
   "currency": "PLN",
-  "machineRates": {
-    "laser_cutting": 250,
-    "bending": 180,
-    "welding": 160,
-    "deburring": 120,
-    "painting": 140
+  "workCenters": {
+    "LASER": {
+      "laborRatePerHour": 0,
+      "laborMarkup": 0,
+      "departmentOverheadFactor": 0,
+      "generalOverheadFactor": 0,
+      "defaultSetupMinutes": 0
+    },
+    "LASER DO RUR": {
+      "laborRatePerHour": 0,
+      "laborMarkup": 0,
+      "departmentOverheadFactor": 0,
+      "generalOverheadFactor": 0,
+      "defaultSetupMinutes": 0
+    },
+    "GIĘTARKA SAFAN": {
+      "laborRatePerHour": 0,
+      "laborMarkup": 0,
+      "departmentOverheadFactor": 0,
+      "generalOverheadFactor": 0,
+      "defaultSetupMinutes": 0
+    },
+    "SPAWALNIA": {
+      "laborRatePerHour": 0,
+      "laborMarkup": 0,
+      "departmentOverheadFactor": 0,
+      "generalOverheadFactor": 0,
+      "defaultSetupMinutes": 0
+    },
+    "PAKOWANIE": {
+      "laborRatePerHour": 0,
+      "laborMarkup": 0,
+      "departmentOverheadFactor": 0,
+      "generalOverheadFactor": 0,
+      "defaultSetupMinutes": 0
+    }
   },
-  "setupTimesMinutes": {
-    "laser_cutting": 15,
-    "bending": 20,
-    "welding": 30,
-    "painting": 25
-  },
-  "markupPercent": 20,
-  "riskBufferPercent": 10
+  "markups": {
+    "materialProcurementPercent": 0,
+    "riskBufferPercent": 0,
+    "salesMarkupPercent": 0
+  }
 }

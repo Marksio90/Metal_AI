@@ -1,0 +1,20 @@
+{
+  "source": "anon_123456abcdef",
+  "detectedSheets": ["GLOWNA", "ROB_MAT", "Pakowanie"],
+  "records": [
+    {
+      "source": "anon_123456abcdef",
+      "operationType": "laser_sheet_cutting",
+      "originalOperationName": "Ciąć Blachę CNC Laser",
+      "workCenter": "LASER",
+      "timeSeconds": 24.0,
+      "setupTimeSeconds": 120.0,
+      "ratePresent": true,
+      "overheadPresent": true,
+      "materialCostDetected": true,
+      "packagingCostDetected": true,
+      "costSummaryDetected": true
+    }
+  ],
+  "validationIssues": []
+}
