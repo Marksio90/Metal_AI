@@ -19,20 +19,19 @@ from app.schemas import (
     RFQIntakeResponse,
     RiskFlagResponse,
 )
-from app.services.llm_service import BackendAPIError, LLMService
+from app.services.llm_service import BackendAPIError, LLMService, build_provider
 from metal_calc.engine.rfq_intake import check_rfq_completeness
 from metal_calc.engine.risk_rules import evaluate_rfq_risk_flags
 
-settings = BackendSettings()
+settings = BackendSettings.from_env()
 llm_service = LLMService(
-    model_name=settings.default_model,
-    provider=settings.provider,
-    timeout_seconds=settings.request_timeout_seconds,
+    provider=build_provider(settings),
+    timeout_seconds=settings.openai_timeout_seconds,
 )
 
 logger = logging.getLogger("backend.api")
 
-app = FastAPI(title=settings.project)
+app = FastAPI(title=settings.app_name)
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,15 +59,15 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/health", response_model=HealthResponse)
 def healthcheck() -> HealthResponse:
-    return HealthResponse(status="ok", service="backend", project=settings.project)
+    return HealthResponse(status="ok", service="backend", project=settings.app_name)
 
 
 @app.get("/api/config", response_model=APIConfigResponse)
 def api_config() -> APIConfigResponse:
     return APIConfigResponse(
-        project=settings.project,
-        llmProvider=settings.provider,
-        model=settings.default_model,
+        project=settings.app_name,
+        llmProvider=settings.llm_provider,
+        model=settings.openai_model,
     )
 
 
