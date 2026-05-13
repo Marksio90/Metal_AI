@@ -1,19 +1,47 @@
 """Backend request/response schemas."""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
 
 
-@dataclass(slots=True)
-class HealthResponse:
+class HealthResponse(BaseModel):
     status: str
     service: str
+    project: str
 
 
-@dataclass(slots=True)
-class LLMRequest:
-    prompt: str
+class APIConfigResponse(BaseModel):
+    project: str
+    llmProvider: str
+    model: str
 
 
-@dataclass(slots=True)
-class LLMResponse:
+class Usage(BaseModel):
+    inputTokens: int = 0
+    outputTokens: int = 0
+    totalTokens: int = 0
+
+
+class ChatMessage(BaseModel):
+    role: str
     content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    conversationId: str | None = None
+    history: list[ChatMessage] = Field(default_factory=list)
+
+
+class ChatResponse(BaseModel):
+    conversationId: str
+    message: str
+    model: str
+    usage: Usage
+
+
+class ServiceChatResponse(BaseModel):
+    message: str
+    model: str
+    usage: Usage
