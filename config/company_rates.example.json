@@ -1,0 +1,18 @@
+{
+  "currency": "PLN",
+  "machineRates": {
+    "laser_cutting": 250,
+    "bending": 180,
+    "welding": 160,
+    "deburring": 120,
+    "painting": 140
+  },
+  "setupTimesMinutes": {
+    "laser_cutting": 15,
+    "bending": 20,
+    "welding": 30,
+    "painting": 25
+  },
+  "markupPercent": 20,
+  "riskBufferPercent": 10
+}
