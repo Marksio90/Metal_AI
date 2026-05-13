@@ -1,17 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type ConfigResponse = { model: string };
+type DetectedOperation = {
+  operationType: string;
+  workCenter: string | null;
+  estimatedSeconds: number | null;
+  sampleCount: number;
+  confidence: string;
+};
+
 type RFQAnalyzeResponse = {
   rfqId: string;
-  detectedParts: Array<Record<string, unknown>>;
+  detectedOperations: DetectedOperation[];
   missingInformation: string[];
-  suggestedRoute: string[];
   riskFlags: string[];
-  internalNotes: string[];
-  customerQuestions: string[];
-  draftCustomerReply: string;
+  requiresHumanReview: boolean;
+  suggestedRoute: string[];
   confidence: number;
 };
 
@@ -23,8 +29,6 @@ export default function HomePage() {
   const [quantity, setQuantity] = useState<number>(50);
   const [message, setMessage] = useState("Please quote 50 pcs from S235 steel, 3 mm sheet, laser cut, bent twice, powder coated black RAL 9005.");
   const [attachments, setAttachments] = useState("drawing.pdf");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [result, setResult] = useState<RFQAnalyzeResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -55,14 +59,7 @@ export default function HomePage() {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload.detail ?? "RFQ analysis failed.");
       }
-      const analyzed = (await response.json()) as RFQAnalyzeResponse;
-      setResult(analyzed);
-      if (selectedFile && result?.rfqId) {
-        const form = new FormData();
-        form.append("rfq_id", result.rfqId);
-        form.append("file", selectedFile);
-        await fetch(`${API_BASE_URL}/api/rfq/upload-attachment`, { method: "POST", body: form });
-      }
+      setResult((await response.json()) as RFQAnalyzeResponse);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error.");
     } finally {
@@ -70,36 +67,68 @@ export default function HomePage() {
     }
   };
 
+  const estimatedCostDrivers = useMemo(() => {
+    if (!result) return [];
+    return [
+      `Operation count: ${result.detectedOperations.length}`,
+      `High-confidence operations: ${result.detectedOperations.filter((o) => o.confidence === "high").length}`,
+      `Needs manual follow-up: ${result.requiresHumanReview ? "yes" : "no"}`,
+    ];
+  }, [result]);
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
-        <h1 className="text-3xl font-bold">Metal_AI RFQ Analysis</h1>
-        <p className="text-slate-300">Primary RFQ workflow (model: {model || "loading..."}).</p>
+      <div className="max-w-6xl mx-auto space-y-6">
+        <h1 className="text-3xl font-bold">Metal_AI RFQ Workflow</h1>
+        <p className="text-slate-300">RFQ-first estimator workflow (model: {model || "loading..."}).</p>
 
         <section className="bg-slate-900 p-4 rounded-xl space-y-3">
           <input className="w-full bg-slate-800 p-2 rounded" value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="Customer name" />
           <input className="w-full bg-slate-800 p-2 rounded" type="number" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} placeholder="Quantity" />
           <textarea className="w-full bg-slate-800 p-2 rounded min-h-36" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Paste RFQ text" />
-          <input className="w-full bg-slate-800 p-2 rounded" value={attachments} onChange={(e) => setAttachments(e.target.value)} placeholder="Attachment placeholders (comma separated)" />
-          <input className="w-full bg-slate-800 p-2 rounded" type="file" onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)} />
+          <input className="w-full bg-slate-800 p-2 rounded" value={attachments} onChange={(e) => setAttachments(e.target.value)} placeholder="Attachments (comma separated)" />
           <button className="bg-blue-600 px-4 py-2 rounded disabled:opacity-50" disabled={loading} onClick={analyze}>{loading ? "Analyzing..." : "Analyze RFQ"}</button>
           {error && <p className="text-red-400">{error}</p>}
         </section>
 
-          <input className="w-full bg-slate-800 p-2 rounded" type="file" onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)} />
-          <button className="bg-blue-600 px-4 py-2 rounded disabled:opacity-50" disabled={loading} onClick={analyze}>{loading ? "Analyzing..." : "Analyze RFQ"}</button>
-          {error && <p className="text-red-400">{error}</p>}
-        </section>
         {result && (
           <section className="grid md:grid-cols-2 gap-4">
-            <Card title="Detected Data"><pre>{JSON.stringify(result.detectedParts, null, 2)}</pre></Card>
-            <Card title="Missing Information"><List items={result.missingInformation} empty="No missing fields detected." /></Card>
-            <Card title="Suggested Manufacturing Route"><List items={result.suggestedRoute} empty="No route suggested." /></Card>
-            <Card title="Risks"><List items={result.riskFlags} empty="No risk flags." /></Card>
-            <Card title="Questions to Customer"><List items={result.customerQuestions} empty="No follow-up questions." /></Card>
-            <Card title="Internal Notes"><List items={result.internalNotes} empty="No notes." /></Card>
-            <Card title="Draft Customer Reply"><p>{result.draftCustomerReply}</p></Card>
-            <Card title="Confidence"><p>{Math.round(result.confidence * 100)}%</p></Card>
+            <Card title="RFQ Analyzer">
+              <p>RFQ ID: {result.rfqId}</p>
+              <p>Confidence: {Math.round(result.confidence * 100)}%</p>
+            </Card>
+
+            <Card title="Operation Time Estimate">
+              <table className="w-full text-xs">
+                <thead><tr><th className="text-left">Operation</th><th className="text-left">Work Center</th><th className="text-left">Sec</th><th className="text-left">Samples</th><th className="text-left">Conf.</th></tr></thead>
+                <tbody>
+                  {result.detectedOperations.map((op, i) => (
+                    <tr key={`${op.operationType}-${i}`}>
+                      <td>{op.operationType}</td><td>{op.workCenter ?? "-"}</td><td>{op.estimatedSeconds ?? "-"}</td><td>{op.sampleCount}</td><td>{op.confidence}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+
+            <Card title="Cost Breakdown">
+              <List items={estimatedCostDrivers} empty="No cost drivers yet." />
+            </Card>
+
+            <Card title="Historical Similarity">
+              <p>Sample count shown per operation from anonymized historical baseline.</p>
+            </Card>
+
+            <Card title="Estimator Review">
+              <p>Human Review Required: <strong>{result.requiresHumanReview ? "YES" : "NO"}</strong></p>
+              <List items={result.missingInformation} empty="No missing data." />
+              <List items={result.riskFlags} empty="No risk flags." />
+            </Card>
+
+            <Card title="Quote Draft">
+              <p>Suggested Route:</p>
+              <List items={result.suggestedRoute} empty="No route suggested." />
+            </Card>
           </section>
         )}
       </div>
@@ -108,7 +137,7 @@ export default function HomePage() {
 }
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return <div className="bg-slate-900 p-4 rounded-xl"><h2 className="font-semibold mb-2">{title}</h2><div className="text-sm text-slate-200">{children}</div></div>;
+  return <div className="bg-slate-900 p-4 rounded-xl"><h2 className="font-semibold mb-2">{title}</h2><div className="text-sm text-slate-200 space-y-2">{children}</div></div>;
 }
 
 function List({ items, empty }: { items: string[]; empty: string }) {

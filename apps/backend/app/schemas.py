@@ -66,6 +66,15 @@ class RFQIntakeResponse(BaseModel):
     riskFlags: list[RiskFlagResponse]
 
 
+
+
+class DetectedOperationResponse(BaseModel):
+    operationType: str
+    workCenter: str | None = None
+    estimatedSeconds: float | None = None
+    sampleCount: int = 0
+    confidence: str
+
 class RFQAnalyzeRequest(BaseModel):
     customer: str
     message: str
@@ -75,15 +84,17 @@ class RFQAnalyzeRequest(BaseModel):
 
 class RFQAnalyzeResponse(BaseModel):
     rfqId: str
-    detectedParts: list[dict]
+    detectedOperations: list[DetectedOperationResponse] = Field(default_factory=list)
     missingInformation: list[str]
-    suggestedRoute: list[str]
     riskFlags: list[str]
-    internalNotes: list[str]
-    customerQuestions: list[str]
-    draftCustomerReply: str
+    requiresHumanReview: bool
+    suggestedRoute: list[str] = Field(default_factory=list)
+    detectedParts: list[dict] = Field(default_factory=list)
+    internalNotes: list[str] = Field(default_factory=list)
+    customerQuestions: list[str] = Field(default_factory=list)
+    draftCustomerReply: str = ""
     preliminaryCost: dict | None = None
-    confidence: float
+    confidence: float = 0.0
 
 
 class QuoteDraftRequest(BaseModel):
