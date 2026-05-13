@@ -29,11 +29,13 @@ from app.schemas import (
     AttachmentMetadataResponse,
     CompanyConfigRequest,
     CompanyConfigResponse,
+    AttachmentMetadataResponse,
     RiskFlagResponse,
 )
 from app.services.llm_service import BackendAPIError, LLMService, build_provider
 from app.db import Base, SessionLocal, engine
 from app.persistence_models import AuditLog, CompanyConfig, EstimatorFeedback, QuoteDraft, RFQ, RFQAttachmentMetadata
+from app.persistence_models import EstimatorFeedback, QuoteDraft, RFQ, RFQAttachmentMetadata
 from metal_calc.engine.rfq_intake import check_rfq_completeness
 from metal_calc.engine.risk_rules import evaluate_rfq_risk_flags
 from metal_calc.costing import calculate_preliminary_cost, load_company_rates
@@ -58,6 +60,11 @@ def get_security_context(
 
 def write_audit(db, ctx: dict, action: str, resource_type: str, resource_id: str, details: dict) -> None:
     db.add(AuditLog(organization_id=ctx["org_id"], actor_id=ctx["user_id"], actor_role=ctx["role"], action=action, resource_type=resource_type, resource_id=resource_id, details=details))
+
+from pypdf import PdfReader
+from io import BytesIO
+
+
 
 class RFQExtractionResult(BaseModel):
     detectedParts: list[dict] = []
@@ -364,6 +371,10 @@ def feedback_diff(rfq_id: str, ctx: dict = Depends(get_security_context)) -> Fee
 
 @app.post("/api/rfq/upload-attachment", response_model=AttachmentMetadataResponse)
 async def upload_attachment(rfq_id: str = Form(...), file: UploadFile = File(...), ctx: dict = Depends(get_security_context)) -> AttachmentMetadataResponse:
+
+
+@app.post("/api/rfq/upload-attachment", response_model=AttachmentMetadataResponse)
+async def upload_attachment(rfq_id: str = Form(...), file: UploadFile = File(...)) -> AttachmentMetadataResponse:
     allowed_ext = {".pdf", ".png", ".jpg", ".jpeg", ".txt"}
     max_size = 10 * 1024 * 1024
     filename = file.filename or "unknown"
@@ -443,3 +454,4 @@ def get_company_config(ctx: dict = Depends(get_security_context)) -> CompanyConf
         return CompanyConfigResponse(organizationId=ctx["org_id"], companyName=row.company_name, defaultCurrency=row.default_currency, defaultLanguage=row.default_language)
     finally:
         db.close()
+

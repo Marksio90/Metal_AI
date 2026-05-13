@@ -24,6 +24,7 @@ export default function HomePage() {
   const [message, setMessage] = useState("Please quote 50 pcs from S235 steel, 3 mm sheet, laser cut, bent twice, powder coated black RAL 9005.");
   const [attachments, setAttachments] = useState("drawing.pdf");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [result, setResult] = useState<RFQAnalyzeResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -62,7 +63,6 @@ export default function HomePage() {
         form.append("file", selectedFile);
         await fetch(`${API_BASE_URL}/api/rfq/upload-attachment`, { method: "POST", body: form });
       }
-
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error.");
     } finally {
@@ -86,6 +86,10 @@ export default function HomePage() {
           {error && <p className="text-red-400">{error}</p>}
         </section>
 
+          <input className="w-full bg-slate-800 p-2 rounded" type="file" onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)} />
+          <button className="bg-blue-600 px-4 py-2 rounded disabled:opacity-50" disabled={loading} onClick={analyze}>{loading ? "Analyzing..." : "Analyze RFQ"}</button>
+          {error && <p className="text-red-400">{error}</p>}
+        </section>
         {result && (
           <section className="grid md:grid-cols-2 gap-4">
             <Card title="Detected Data"><pre>{JSON.stringify(result.detectedParts, null, 2)}</pre></Card>
