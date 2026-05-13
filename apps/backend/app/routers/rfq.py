@@ -8,7 +8,6 @@ from io import BytesIO
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from pypdf import PdfReader
 
 from app.audit import write_audit
 from app.db import SessionLocal
@@ -30,10 +29,8 @@ from app.security import get_security_context
 from metal_calc.costing import calculate_preliminary_cost, load_company_rates
 from metal_calc.engine.rfq_intake import check_rfq_completeness
 from metal_calc.engine.risk_rules import evaluate_rfq_risk_flags
-from metal_calc.knowledge import classify_operation, get_preferred_work_centers
 from metal_calc.models import CustomerInfo, FinishSpec, MaterialSpec, PartSpec, QuantityBreak, RFQInput
-from metal_calc.routing import generate_route
-from metal_calc.time_estimation import OperationTimeEstimator
+from metal_calc.routing import generate_route, suggest_route_from_context
 
 router = APIRouter(prefix="/api/rfq", tags=["rfq"])
 
@@ -59,40 +56,92 @@ def rfq_intake_check(payload: RFQIntakeRequest) -> RFQIntakeResponse:
 async def analyze_rfq(payload: RFQAnalyzeRequest) -> RFQAnalyzeResponse:
     rfq_id = str(uuid4())
     text = payload.message or ""
-
     lower = text.lower()
+
+    # --- Extract scalar fields from free text ---
     quantity = payload.quantity
     if quantity is None:
         match = re.search(r"\b(\d{1,7})\s*(pcs|szt|pieces)?\b", lower)
         quantity = int(match.group(1)) if match else None
 
-    material = "steel" if any(k in lower for k in ["steel", "stal", "s235", "inox", "aluminium", "aluminum"]) else None
-    finish = "painting" if any(k in lower for k in ["paint", "powder", "malow"]) else ("galvanizing" if "cynk" in lower or "galvan" in lower else None)
+    material = None
+    for kw in ["steel", "stal", "s235", "s355", "inox", "aluminium", "aluminum"]:
+        if kw in lower:
+            material = "steel"
+            break
 
-    extracted_ops = []
-    for token in ["laser", "bending", "gię", "weld", "spaw", "pack", "pakow", "assembly", "montaż"]:
-        if token in lower:
-            extracted_ops.append(token)
+    finish = None
+    if any(k in lower for k in ["paint", "powder", "malow", "ral", "farb"]):
+        finish = "painting"
+    elif any(k in lower for k in ["cynk", "galvan"]):
+        finish = "galvanizing"
 
-    operation_names = extracted_ops or ["manual review"]
-    estimator = OperationTimeEstimator()
-    detected_operations = []
-    suggested_route: list[str] = []
-    for op_name in operation_names:
-        cls = classify_operation(op_name)
-        preferred = get_preferred_work_centers(cls.canonicalOperationType)
-        estimate = estimator.estimate(cls.canonicalOperationType, preferred[0] if preferred else None)
-        detected_operations.append(
-            {
-                "operationType": estimate["operationType"],
-                "workCenter": estimate["workCenter"],
-                "estimatedSeconds": estimate["estimatedSeconds"],
-                "sampleCount": estimate["sampleCount"],
-                "confidence": estimate["confidence"],
-            }
-        )
-        suggested_route.append(cls.canonicalOperationType)
+    # --- Detect operations using routing.py's context-aware logic ---
+    # suggest_route_from_context correctly handles compound keywords and returns
+    # detailed canonical types; generate_route then maps them to OperationType enum.
+    route_suggestions = suggest_route_from_context(
+        rfq_text=text,
+        material_type=material,
+        geometry_hints=[],
+        finish_type=finish,
+        shippable=bool(quantity and quantity > 0),
+    )
 
+    detected_operations = [
+        {
+            "operationType": s["operationType"],
+            "workCenter": s.get("workCenter"),
+            "estimatedSeconds": s.get("estimatedSeconds"),
+            "sampleCount": s.get("sampleCount", 0),
+            "confidence": s.get("confidence", "insufficient"),
+        }
+        for s in route_suggestions
+    ]
+
+    # Map taxonomy operation types (from suggest_route_from_context) to OperationType enum values.
+    # This preserves the original text context — generate_route() with a simplified rfq_input
+    # would lose keywords like "laser cut" from the message and produce wrong suggested_route.
+    _TAXONOMY_TO_ENUM: dict[str, str] = {
+        "laser_sheet_cutting": "laser_cutting",
+        "laser_tube_or_profile_cutting": "laser_cutting",
+        "saw_or_profile_cutting": "laser_cutting",
+        "cnc_bending_sheet": "bending",
+        "cnc_bending_tube": "bending",
+        "cnc_bending_wire": "bending",
+        "wire_straightening_cutting": "bending",
+        "mig_manual_welding": "welding",
+        "robot_welding": "welding",
+        "spot_welding": "welding",
+        "deburring_manual_finishing": "deburring",
+        "grinding": "deburring",
+        "assembly": "assembly",
+        "packaging": "subcontracting",
+        "pressing": "subcontracting",
+        "milling": "subcontracting",
+        "drilling": "subcontracting",
+        "turning": "subcontracting",
+        "painting": "painting",
+        "galvanizing": "galvanizing",
+        "subcontracting": "subcontracting",
+        "manual_review": "manual_review",
+        "unknown_operation": "manual_review",
+    }
+    suggested_route: list[str] = [
+        _TAXONOMY_TO_ENUM.get(s["operationType"], "manual_review") for s in route_suggestions
+    ]
+
+    # Build rfq_input for preliminary cost calculation (generate_route used only for costing).
+    rfq_input = RFQInput(
+        customer=CustomerInfo(name=payload.customer or "unknown"),
+        part=PartSpec(part_name="rfq_part"),
+        material=MaterialSpec(material_code=material or "unknown"),
+        finish=FinishSpec(finish_code=finish or "unknown_finish"),
+        quantity_break=QuantityBreak(quantity=quantity or 1),
+        requested_operations=[],
+    )
+    domain_route = generate_route(rfq_input)
+
+    # --- Completeness check ---
     missing: list[str] = []
     if not material:
         missing.append("material")
@@ -109,23 +158,17 @@ async def analyze_rfq(payload: RFQAnalyzeRequest) -> RFQAnalyzeResponse:
     if any(op["confidence"] in {"low", "insufficient"} for op in detected_operations):
         risk_flags.append("low_historical_operation_confidence")
 
-    requires_human_review = bool(missing) or any(op["confidence"] != "high" for op in detected_operations)
-    confidence = 0.9 if not requires_human_review else 0.45
+    requires_human_review = bool(missing) or any(
+        op["confidence"] not in {"high", "medium"} for op in detected_operations
+    )
+    confidence_score = 0.9 if not requires_human_review else 0.45
 
+    # --- Preliminary cost (only when data is complete and rates available) ---
     preliminary_cost_result = None
     if not requires_human_review:
         try:
-            rfq_input = RFQInput(
-                customer=CustomerInfo(name=payload.customer or "unknown"),
-                part=PartSpec(part_name="rfq_part"),
-                material=MaterialSpec(material_code=material or "unknown"),
-                finish=FinishSpec(finish_code=finish or "unknown_finish"),
-                quantity_break=QuantityBreak(quantity=quantity or 1),
-                requested_operations=[],
-            )
-            route = generate_route(rfq_input)
             rates = load_company_rates()
-            cost_result = calculate_preliminary_cost(rfq_input, route, rates)
+            cost_result = calculate_preliminary_cost(rfq_input, domain_route, rates)
             preliminary_cost_result = asdict(cost_result)
         except Exception:
             preliminary_cost_result = None
@@ -140,9 +183,13 @@ async def analyze_rfq(payload: RFQAnalyzeRequest) -> RFQAnalyzeResponse:
         detectedParts=[],
         internalNotes=["Deterministic RFQ analysis with historical baseline-driven operation timing."],
         customerQuestions=[f"Please provide missing: {m}." for m in missing],
-        draftCustomerReply="Please provide missing RFQ data." if missing else "Thank you for your RFQ. We will prepare a quotation based on the provided information.",
+        draftCustomerReply=(
+            "Please provide missing RFQ data."
+            if missing
+            else "Thank you for your RFQ. We will prepare a quotation based on the provided information."
+        ),
         preliminaryCost=preliminary_cost_result,
-        confidence=confidence,
+        confidence=confidence_score,
     )
 
 
@@ -306,6 +353,7 @@ def upload_attachment(
     extracted_text = None
     if ext == ".pdf":
         try:
+            from pypdf import PdfReader  # deferred: pypdf pulls cryptography at import time
             reader = PdfReader(BytesIO(raw))
             extracted_text = "\n".join((page.extract_text() or "") for page in reader.pages).strip()
         except Exception:

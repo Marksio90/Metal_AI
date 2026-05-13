@@ -1,45 +1,116 @@
 {
+  "_comment": "Example company rates — replace with your private config/private/company_rates.json. All rates are illustrative only.",
   "currency": "PLN",
+
   "workCenters": {
     "LASER": {
-      "laborRatePerHour": 0,
-      "laborMarkup": 0,
-      "departmentOverheadFactor": 0,
-      "generalOverheadFactor": 0,
-      "defaultSetupMinutes": 0
+      "laborRatePerHour": 130,
+      "laborMarkup": 0.15,
+      "departmentOverheadFactor": 0.10,
+      "generalOverheadFactor": 0.05,
+      "defaultSetupMinutes": 15
     },
     "LASER DO RUR": {
-      "laborRatePerHour": 0,
-      "laborMarkup": 0,
-      "departmentOverheadFactor": 0,
-      "generalOverheadFactor": 0,
-      "defaultSetupMinutes": 0
+      "laborRatePerHour": 140,
+      "laborMarkup": 0.15,
+      "departmentOverheadFactor": 0.10,
+      "generalOverheadFactor": 0.05,
+      "defaultSetupMinutes": 20
     },
     "GIĘTARKA SAFAN": {
-      "laborRatePerHour": 0,
-      "laborMarkup": 0,
-      "departmentOverheadFactor": 0,
-      "generalOverheadFactor": 0,
-      "defaultSetupMinutes": 0
+      "laborRatePerHour": 100,
+      "laborMarkup": 0.15,
+      "departmentOverheadFactor": 0.10,
+      "generalOverheadFactor": 0.05,
+      "defaultSetupMinutes": 12
+    },
+    "GIĘTARKI CNC": {
+      "laborRatePerHour": 110,
+      "laborMarkup": 0.15,
+      "departmentOverheadFactor": 0.10,
+      "generalOverheadFactor": 0.05,
+      "defaultSetupMinutes": 12
     },
     "SPAWALNIA": {
-      "laborRatePerHour": 0,
-      "laborMarkup": 0,
-      "departmentOverheadFactor": 0,
-      "generalOverheadFactor": 0,
+      "laborRatePerHour": 90,
+      "laborMarkup": 0.15,
+      "departmentOverheadFactor": 0.12,
+      "generalOverheadFactor": 0.05,
+      "defaultSetupMinutes": 10
+    },
+    "ROBOT": {
+      "laborRatePerHour": 160,
+      "laborMarkup": 0.10,
+      "departmentOverheadFactor": 0.15,
+      "generalOverheadFactor": 0.05,
+      "defaultSetupMinutes": 30
+    },
+    "ZGRZEWARKI": {
+      "laborRatePerHour": 80,
+      "laborMarkup": 0.15,
+      "departmentOverheadFactor": 0.10,
+      "generalOverheadFactor": 0.05,
+      "defaultSetupMinutes": 8
+    },
+    "MALARNIA": {
+      "laborRatePerHour": 75,
+      "laborMarkup": 0.10,
+      "departmentOverheadFactor": 0.10,
+      "generalOverheadFactor": 0.05,
+      "defaultSetupMinutes": 20
+    },
+    "CYNKOWNIA": {
+      "laborRatePerHour": 60,
+      "laborMarkup": 0.10,
+      "departmentOverheadFactor": 0.08,
+      "generalOverheadFactor": 0.05,
       "defaultSetupMinutes": 0
     },
+    "MONTAŻ": {
+      "laborRatePerHour": 70,
+      "laborMarkup": 0.15,
+      "departmentOverheadFactor": 0.10,
+      "generalOverheadFactor": 0.05,
+      "defaultSetupMinutes": 5
+    },
     "PAKOWANIE": {
-      "laborRatePerHour": 0,
-      "laborMarkup": 0,
-      "departmentOverheadFactor": 0,
-      "generalOverheadFactor": 0,
-      "defaultSetupMinutes": 0
+      "laborRatePerHour": 50,
+      "laborMarkup": 0.10,
+      "departmentOverheadFactor": 0.05,
+      "generalOverheadFactor": 0.05,
+      "defaultSetupMinutes": 5
     }
   },
+
   "markups": {
-    "materialProcurementPercent": 0,
-    "riskBufferPercent": 0,
-    "salesMarkupPercent": 0
-  }
+    "materialProcurementPercent": 5,
+    "riskBufferPercent": 10,
+    "salesMarkupPercent": 20
+  },
+
+  "_legacy_note": "machineRates / setupTimesMinutes / riskBufferPercent / markupPercent are used by the deprecated calculate_preliminary_cost() function.",
+  "machineRates": {
+    "laser_cutting":  130,
+    "bending":        300,
+    "welding":        90,
+    "deburring":      60,
+    "painting":       75,
+    "galvanizing":    60,
+    "assembly":       70,
+    "subcontracting": 50,
+    "manual_review":  0
+  },
+  "setupTimesMinutes": {
+    "laser_cutting":  15,
+    "bending":        18,
+    "welding":        10,
+    "deburring":      5,
+    "painting":       20,
+    "galvanizing":    0,
+    "assembly":       5,
+    "subcontracting": 0,
+    "manual_review":  0
+  },
+  "riskBufferPercent": 10,
+  "markupPercent": 20
 }
