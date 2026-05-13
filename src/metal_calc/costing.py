@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -170,7 +171,20 @@ def calculate_deterministic_cost(
 
 
 def calculate_preliminary_cost(rfq: RFQInput, route: ManufacturingRoute, rates: dict) -> PreliminaryCostResult:
-    warnings: list[str] = []
+    """Calculate a rough preliminary cost using placeholder formulas.
+
+    DEPRECATED: Uses placeholder formulas (mass * qty * 2.5, rate * 0.1).
+    For production calculations use calculate_deterministic_cost() together
+    with QuoteItem from metal_calc.engine.calculation.
+    This function is retained for backward compatibility and will be removed in v0.2.
+    """
+    warnings.warn(
+        "calculate_preliminary_cost() uses placeholder formulas and is deprecated. "
+        "Use calculate_deterministic_cost() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    cost_warnings: list[str] = []
     assumptions = [
         "Material cost is placeholder baseline (mass * qty * 2.5).",
         "Finishing cost is placeholder flat value based on finish availability.",
@@ -189,7 +203,7 @@ def calculate_preliminary_cost(rfq: RFQInput, route: ManufacturingRoute, rates: 
         op_key = op.operation.value
         rate = float(machine_rates.get(op_key, 0.0))
         if rate == 0.0:
-            warnings.append(f"Missing machine rate for operation: {op_key}")
+            cost_warnings.append(f"Missing machine rate for operation: {op_key}")
         operation_cost += rate * 0.1
 
         setup_minutes = float(setup_times.get(op_key, 0.0))
@@ -215,5 +229,5 @@ def calculate_preliminary_cost(rfq: RFQInput, route: ManufacturingRoute, rates: 
         markupValue=round(markup_value, 2),
         totalEstimatedPrice=round(total, 2),
         assumptions=assumptions,
-        warnings=warnings,
+        warnings=cost_warnings,
     )

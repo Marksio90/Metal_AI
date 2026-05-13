@@ -82,3 +82,24 @@ class AuditLog(Base):
     resource_id: Mapped[str] = mapped_column(String(64))
     details: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class HistoricalQuoteItem(Base):
+    """Completed/accepted quote items stored for analog search and self-learning."""
+
+    __tablename__ = "historical_quote_item"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    organization_id: Mapped[str] = mapped_column(String(64), index=True, default="default-org")
+    rfq_id: Mapped[str] = mapped_column(String(64), index=True)
+    # Feature columns for similarity search
+    product_family: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    material_family: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    thickness_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unit_mass_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    operation_types: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Outcome columns — populated after estimator review
+    final_price_zl: Mapped[float | None] = mapped_column(Float, nullable=True)
+    final_margin_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
