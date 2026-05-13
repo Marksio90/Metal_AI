@@ -25,6 +25,7 @@ from app.schemas import (
     QuoteDraftResponse,
     SaveRFQAnalysisRequest,
     EstimatorFeedbackRequest,
+    FeedbackDiffResponse,
     RiskFlagResponse,
 )
 from app.services.llm_service import BackendAPIError, LLMService, build_provider
@@ -286,9 +287,51 @@ def save_feedback(payload: EstimatorFeedbackRequest) -> dict:
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        row = EstimatorFeedback(rfq_id=payload.rfqId, decision=payload.decision, comment=payload.comment)
+        row = EstimatorFeedback(
+            rfq_id=payload.rfqId,
+            decision=payload.decision,
+            corrected_material=payload.correctedMaterial,
+            corrected_operation_route={"route": payload.correctedOperationRoute} if payload.correctedOperationRoute else None,
+            corrected_quantity=payload.correctedQuantity,
+            corrected_cost=payload.correctedCost,
+            corrected_margin=payload.correctedMargin,
+            correction_reason=payload.correctionReason,
+            estimator_note=payload.estimatorNote,
+        )
         db.add(row)
         db.commit()
     finally:
         db.close()
     return {"saved": True}
+
+
+@app.get("/api/rfq/feedback-diff/{rfq_id}", response_model=FeedbackDiffResponse)
+def feedback_diff(rfq_id: str) -> FeedbackDiffResponse:
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        feedback = db.query(EstimatorFeedback).filter(EstimatorFeedback.rfq_id == rfq_id).order_by(EstimatorFeedback.id.desc()).first()
+        if feedback is None:
+            raise HTTPException(status_code=404, detail="No feedback found for RFQ")
+
+        ai_suggestion = {
+            "material": "unknown",
+            "route": [],
+            "quantity": None,
+            "cost": None,
+            "margin": None,
+        }
+        human = {
+            "material": feedback.corrected_material,
+            "route": (feedback.corrected_operation_route or {}).get("route", []),
+            "quantity": feedback.corrected_quantity,
+            "cost": feedback.corrected_cost,
+            "margin": feedback.corrected_margin,
+            "decision": feedback.decision,
+            "reason": feedback.correction_reason,
+            "note": feedback.estimator_note,
+        }
+        diffs = [k for k in ["material", "route", "quantity", "cost", "margin"] if human.get(k) not in (None, [], ai_suggestion.get(k))]
+        return FeedbackDiffResponse(rfqId=rfq_id, aiSuggestion=ai_suggestion, humanCorrection=human, differences=diffs)
+    finally:
+        db.close()

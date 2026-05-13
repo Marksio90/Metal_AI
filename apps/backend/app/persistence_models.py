@@ -34,6 +34,12 @@ class EstimatorFeedback(Base):
     __tablename__ = "estimator_feedback"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     rfq_id: Mapped[str] = mapped_column(String(64), index=True)
-    decision: Mapped[str] = mapped_column(String(64))
-    comment: Mapped[str] = mapped_column(Text)
+    decision: Mapped[str] = mapped_column(String(64))  # accepted / rejected
+    corrected_material: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    corrected_operation_route: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    corrected_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    corrected_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
+    corrected_margin: Mapped[float | None] = mapped_column(Float, nullable=True)
+    correction_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    estimator_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -5,6 +5,7 @@ sys.path.insert(0, str(Path("apps/backend").resolve()))
 sys.path.insert(0, str(Path("src").resolve()))
 
 import importlib
+import os
 
 from fastapi.testclient import TestClient
 import pytest
@@ -54,6 +55,9 @@ def test_chat_schema_validation():
 
 @pytest.fixture
 def test_client(monkeypatch):
+    if os.path.exists("test_feedback.db"):
+        os.remove("test_feedback.db")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./test_feedback.db")
     monkeypatch.setenv("LLM_PROVIDER", "mock")
     monkeypatch.setenv("OPENAI_MODEL", "mock-model")
     import app.main as main_module
@@ -172,6 +176,6 @@ def test_persistence_save_analysis_quote_and_feedback(test_client):
 
     feedback = test_client.post(
         "/api/rfq/feedback",
-        json={"rfqId": analysis["rfqId"], "decision": "approved", "comment": "Looks good"},
+        json={"rfqId": analysis["rfqId"], "decision": "accepted", "correctedMaterial": "S355", "correctedOperationRoute": ["laser_cutting", "bending"], "correctedQuantity": 25, "correctedCost": 1500.0, "correctedMargin": 22.0, "correctionReason": "Material upgraded", "estimatorNote": "Customer requested stronger steel"},
     )
     assert feedback.status_code == 200

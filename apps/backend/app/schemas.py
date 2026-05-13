@@ -111,4 +111,17 @@ class SaveRFQAnalysisRequest(BaseModel):
 class EstimatorFeedbackRequest(BaseModel):
     rfqId: str
     decision: str
-    comment: str
+    correctedMaterial: str | None = None
+    correctedOperationRoute: list[str] | None = None
+    correctedQuantity: int | None = None
+    correctedCost: float | None = None
+    correctedMargin: float | None = None
+    correctionReason: str | None = None
+    estimatorNote: str | None = None
+
+
+class FeedbackDiffResponse(BaseModel):
+    rfqId: str
+    aiSuggestion: dict
+    humanCorrection: dict
+    differences: list[str]
