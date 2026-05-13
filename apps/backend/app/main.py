@@ -21,6 +21,8 @@ from app.schemas import (
     RFQIntakeResponse,
     RFQAnalyzeRequest,
     RFQAnalyzeResponse,
+    QuoteDraftRequest,
+    QuoteDraftResponse,
     RiskFlagResponse,
 )
 from app.services.llm_service import BackendAPIError, LLMService, build_provider
@@ -186,4 +188,52 @@ async def analyze_rfq(payload: RFQAnalyzeRequest) -> RFQAnalyzeResponse:
         draftCustomerReply=draft_reply,
         preliminaryCost=preliminary_cost,
         confidence=confidence,
+    )
+
+
+@app.post("/api/rfq/quote-draft", response_model=QuoteDraftResponse)
+def quote_draft(payload: QuoteDraftRequest) -> QuoteDraftResponse:
+    analysis = payload.rfqAnalysis
+    is_preliminary = len(analysis.missingInformation) > 0
+
+    assumptions = [
+        "Draft generated from RFQ analysis output.",
+        "Commercial terms, delivery and validity are subject to final technical review.",
+    ]
+    if is_preliminary:
+        assumptions.append("Draft is preliminary due to missing RFQ information.")
+
+    clarification_questions = [q for q in analysis.customerQuestions]
+    risk_warnings = [r for r in analysis.riskFlags]
+
+    if payload.language.lower().startswith("pl"):
+        opening = "Dziękujemy za zapytanie ofertowe."
+        prelim = "Oferta ma charakter wstępny" if is_preliminary else "Możemy przygotować ofertę"
+    else:
+        opening = "Thank you for your RFQ."
+        prelim = "This quotation is preliminary" if is_preliminary else "We can prepare a formal quotation"
+
+    customer_lines = [
+        opening,
+        f"{prelim} based on current data.",
+    ]
+    if clarification_questions:
+        customer_lines.append("To proceed, please clarify:")
+        customer_lines.extend([f"- {q}" for q in clarification_questions])
+    customer_lines.append("Best regards,")
+    customer_lines.append("Sales Team")
+
+    internal_notes = list(analysis.internalNotes)
+    if payload.costBreakdown or analysis.preliminaryCost:
+        internal_notes.append("Cost breakdown available internally; do not disclose margin structure to customer.")
+    if is_preliminary:
+        internal_notes.append("Do not commit to final price before missing technical data is received.")
+
+    return QuoteDraftResponse(
+        customerFacingResponse="\n".join(customer_lines),
+        internalEstimatorNotes=internal_notes,
+        assumptions=assumptions,
+        clarificationQuestions=clarification_questions,
+        riskWarnings=risk_warnings,
+        isPreliminary=is_preliminary,
     )

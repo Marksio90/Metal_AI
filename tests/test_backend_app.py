@@ -118,3 +118,29 @@ def test_rfq_analyze_incomplete_payload(test_client):
     assert "material" in data["missingInformation"]
     assert "drawing_attachment" in data["missingInformation"]
     assert "please provide" in data["draftCustomerReply"].lower()
+
+
+def test_quote_draft_preliminary_and_separated_content(test_client):
+    analysis = test_client.post(
+        "/api/rfq/analyze",
+        json={
+            "customer": "Example Customer",
+            "message": "Please quote this part.",
+            "attachments": [],
+            "quantity": 0,
+        },
+    ).json()
+
+    response = test_client.post(
+        "/api/rfq/quote-draft",
+        json={
+            "rfqAnalysis": analysis,
+            "language": "en",
+            "tone": "professional",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["isPreliminary"] is True
+    assert "preliminary" in data["customerFacingResponse"].lower()
+    assert any("do not commit" in n.lower() for n in data["internalEstimatorNotes"])

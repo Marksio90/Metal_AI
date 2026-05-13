@@ -84,3 +84,19 @@ class RFQAnalyzeResponse(BaseModel):
     draftCustomerReply: str
     preliminaryCost: dict | None = None
     confidence: float
+
+
+class QuoteDraftRequest(BaseModel):
+    rfqAnalysis: RFQAnalyzeResponse
+    costBreakdown: dict | None = None
+    language: str = "en"
+    tone: str = "professional"
+
+
+class QuoteDraftResponse(BaseModel):
+    customerFacingResponse: str
+    internalEstimatorNotes: list[str]
+    assumptions: list[str]
+    clarificationQuestions: list[str]
+    riskWarnings: list[str]
+    isPreliminary: bool
