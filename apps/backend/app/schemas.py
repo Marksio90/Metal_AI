@@ -82,4 +82,5 @@ class RFQAnalyzeResponse(BaseModel):
     internalNotes: list[str]
     customerQuestions: list[str]
     draftCustomerReply: str
+    preliminaryCost: dict | None = None
     confidence: float

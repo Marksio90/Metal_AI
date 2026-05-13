@@ -100,6 +100,7 @@ def test_rfq_analyze_valid_payload(test_client):
     assert data["missingInformation"] == []
     assert "laser_cutting" in data["suggestedRoute"]
     assert "Thank you" in data["draftCustomerReply"]
+    assert data["preliminaryCost"] is not None
 
 
 def test_rfq_analyze_incomplete_payload(test_client):

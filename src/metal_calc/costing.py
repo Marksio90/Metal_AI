@@ -1,32 +1,76 @@
 from __future__ import annotations
 
-from metal_calc.models import CostBreakdown, MachineRate, ManufacturingRoute, OperationType, RFQInput
+import json
+from dataclasses import dataclass
+from pathlib import Path
 
-DEFAULT_MACHINE_RATES: dict[OperationType, MachineRate] = {
-    OperationType.LASER_CUTTING: MachineRate(OperationType.LASER_CUTTING, 120.0),
-    OperationType.BENDING: MachineRate(OperationType.BENDING, 90.0),
-    OperationType.WELDING: MachineRate(OperationType.WELDING, 110.0),
-    OperationType.DEBURRING: MachineRate(OperationType.DEBURRING, 75.0),
-    OperationType.PAINTING: MachineRate(OperationType.PAINTING, 80.0),
-    OperationType.GALVANIZING: MachineRate(OperationType.GALVANIZING, 85.0),
-    OperationType.ASSEMBLY: MachineRate(OperationType.ASSEMBLY, 95.0),
-    OperationType.SUBCONTRACTING: MachineRate(OperationType.SUBCONTRACTING, 100.0),
-    OperationType.MANUAL_REVIEW: MachineRate(OperationType.MANUAL_REVIEW, 60.0),
-}
+from metal_calc.models import ManufacturingRoute, RFQInput
 
 
-def estimate_cost(rfq: RFQInput, route: ManufacturingRoute) -> CostBreakdown:
+@dataclass(slots=True)
+class PreliminaryCostResult:
+    currency: str
+    materialCost: float
+    operationCost: float
+    setupCost: float
+    finishingCost: float
+    subtotalBeforeBuffers: float
+    riskBufferValue: float
+    markupValue: float
+    totalEstimatedPrice: float
+    assumptions: list[str]
+    warnings: list[str]
+
+
+def load_company_rates(path: str = "config/company_rates.example.json") -> dict:
+    return json.loads(Path(path).read_text())
+
+
+def calculate_preliminary_cost(rfq: RFQInput, route: ManufacturingRoute, rates: dict) -> PreliminaryCostResult:
+    warnings: list[str] = []
+    assumptions = [
+        "Material cost is placeholder baseline (mass * qty * 2.5).",
+        "Finishing cost is placeholder flat value based on finish availability.",
+        "Estimate is preliminary and not final quotation.",
+    ]
+
     qty = max(rfq.quantity_break.quantity, 0)
     material_cost = (rfq.part.mass_kg or 0.0) * qty * 2.5
-    operation_cost = sum(DEFAULT_MACHINE_RATES[op.operation].hourly_rate * 0.1 for op in route.operations)
-    finishing_cost = 15.0 if rfq.finish.finish_code not in {"unknown_finish", "raw"} else 0.0
-    subcontracting_cost = 25.0 if any(op.operation == OperationType.SUBCONTRACTING for op in route.operations) else 0.0
-    total = material_cost + operation_cost + finishing_cost + subcontracting_cost
-    return CostBreakdown(
-        material_cost=round(material_cost, 2),
-        operation_cost=round(operation_cost, 2),
-        finishing_cost=round(finishing_cost, 2),
-        subcontracting_cost=round(subcontracting_cost, 2),
-        total_cost=round(total, 2),
-        assumptions=["Machine time baseline: 0.1h per operation per RFQ."],
+
+    machine_rates = rates.get("machineRates", {})
+    setup_times = rates.get("setupTimesMinutes", {})
+
+    operation_cost = 0.0
+    setup_cost = 0.0
+    for op in route.operations:
+        op_key = op.operation.value
+        rate = float(machine_rates.get(op_key, 0.0))
+        if rate == 0.0:
+            warnings.append(f"Missing machine rate for operation: {op_key}")
+        operation_cost += rate * 0.1
+
+        setup_minutes = float(setup_times.get(op_key, 0.0))
+        setup_cost += (setup_minutes / 60.0) * rate
+
+    finishing_cost = 30.0 if rfq.finish.finish_code not in {"unknown_finish", "raw"} else 0.0
+    subtotal = material_cost + operation_cost + setup_cost + finishing_cost
+
+    risk_buffer_percent = float(rates.get("riskBufferPercent", 0.0))
+    markup_percent = float(rates.get("markupPercent", 0.0))
+    risk_buffer_value = subtotal * (risk_buffer_percent / 100.0)
+    markup_value = (subtotal + risk_buffer_value) * (markup_percent / 100.0)
+    total = subtotal + risk_buffer_value + markup_value
+
+    return PreliminaryCostResult(
+        currency=rates.get("currency", "PLN"),
+        materialCost=round(material_cost, 2),
+        operationCost=round(operation_cost, 2),
+        setupCost=round(setup_cost, 2),
+        finishingCost=round(finishing_cost, 2),
+        subtotalBeforeBuffers=round(subtotal, 2),
+        riskBufferValue=round(risk_buffer_value, 2),
+        markupValue=round(markup_value, 2),
+        totalEstimatedPrice=round(total, 2),
+        assumptions=assumptions,
+        warnings=warnings,
     )

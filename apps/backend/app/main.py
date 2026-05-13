@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from uuid import uuid4
+from dataclasses import asdict
 from pydantic import BaseModel, ValidationError
 
 from fastapi import FastAPI, HTTPException, Request
@@ -25,6 +26,9 @@ from app.schemas import (
 from app.services.llm_service import BackendAPIError, LLMService, build_provider
 from metal_calc.engine.rfq_intake import check_rfq_completeness
 from metal_calc.engine.risk_rules import evaluate_rfq_risk_flags
+from metal_calc.costing import calculate_preliminary_cost, load_company_rates
+from metal_calc.models import CustomerInfo, FinishSpec, MaterialSpec, PartSpec, QuantityBreak, RFQInput, OperationType
+from metal_calc.routing import generate_route
 
 
 class RFQExtractionResult(BaseModel):
@@ -149,8 +153,24 @@ async def analyze_rfq(payload: RFQAnalyzeRequest) -> RFQAnalyzeResponse:
         risks.append("no_drawing_provided")
 
     suggested_route = extracted.operations or ["manual_review"]
-    customer_questions = [f"Please provide missing: {m}." for m in missing]
+
     internal_notes = ["Deterministic post-processing applied to LLM extraction output."]
+    preliminary_cost = None
+    try:
+        rfq_input = RFQInput(
+            customer=CustomerInfo(name=payload.customer),
+            part=PartSpec(part_name="part_1", mass_kg=1.0),
+            material=MaterialSpec(material_code=extracted.material or "unknown_material", thickness_mm=extracted.thicknessMm),
+            finish=FinishSpec(finish_code=extracted.finish or "unknown_finish"),
+            quantity_break=QuantityBreak(quantity=payload.quantity or extracted.quantity or 0),
+            requested_operations=[OperationType(op) for op in suggested_route if op in {e.value for e in OperationType}],
+        )
+        route = generate_route(rfq_input)
+        rates = load_company_rates()
+        preliminary_cost = asdict(calculate_preliminary_cost(rfq_input, route, rates))
+    except Exception as exc:
+        internal_notes.append(f"Preliminary costing skipped due to incomplete structured data: {type(exc).__name__}.")
+    customer_questions = [f"Please provide missing: {m}." for m in missing]
     confidence = 0.85 if not missing else 0.45
 
     draft_reply = "Thank you for your RFQ. To prepare a reliable quotation, please provide: " + ", ".join(missing) + "." if missing else "Thank you for your RFQ. We have enough initial data and will send a quotation draft shortly."
@@ -164,5 +184,6 @@ async def analyze_rfq(payload: RFQAnalyzeRequest) -> RFQAnalyzeResponse:
         internalNotes=internal_notes,
         customerQuestions=customer_questions,
         draftCustomerReply=draft_reply,
+        preliminaryCost=preliminary_cost,
         confidence=confidence,
     )

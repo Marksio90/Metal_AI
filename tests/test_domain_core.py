@@ -1,4 +1,4 @@
-from metal_calc.costing import estimate_cost
+from metal_calc.costing import calculate_preliminary_cost, load_company_rates
 from metal_calc.models import (
     CustomerInfo,
     FinishSpec,
@@ -49,6 +49,7 @@ def test_missing_data_detection():
 def test_cost_breakdown_model_and_values():
     rfq = _valid_rfq()
     route = generate_route(rfq)
-    costs = estimate_cost(rfq, route)
-    assert costs.total_cost > 0
+    rates = load_company_rates()
+    costs = calculate_preliminary_cost(rfq, route, rates)
+    assert costs.totalEstimatedPrice > 0
     assert len(costs.assumptions) > 0
