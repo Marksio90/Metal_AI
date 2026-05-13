@@ -134,3 +134,16 @@ class AttachmentMetadataResponse(BaseModel):
     sizeBytes: int
     contentType: str
     extractedTextPreview: str | None = None
+
+
+class CompanyConfigRequest(BaseModel):
+    companyName: str
+    defaultCurrency: str = "PLN"
+    defaultLanguage: str = "en"
+
+
+class CompanyConfigResponse(BaseModel):
+    organizationId: str
+    companyName: str
+    defaultCurrency: str
+    defaultLanguage: str

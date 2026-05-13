@@ -196,3 +196,26 @@ def test_upload_attachment_metadata_and_limits(test_client):
     data = response.json()
     assert data["filename"] == "spec.txt"
     assert data["extension"] == ".txt"
+
+
+def test_company_config_requires_admin_and_is_tenant_scoped(test_client):
+    denied = test_client.post(
+        "/api/company/config",
+        headers={"x-role": "sales", "x-org-id": "org-a", "x-user-id": "u1"},
+        json={"companyName": "A Corp", "defaultCurrency": "EUR", "defaultLanguage": "de"},
+    )
+    assert denied.status_code == 403
+
+    created = test_client.post(
+        "/api/company/config",
+        headers={"x-role": "admin", "x-org-id": "org-a", "x-user-id": "u1"},
+        json={"companyName": "A Corp", "defaultCurrency": "EUR", "defaultLanguage": "de"},
+    )
+    assert created.status_code == 200
+
+    fetched = test_client.get(
+        "/api/company/config",
+        headers={"x-role": "viewer", "x-org-id": "org-a", "x-user-id": "u2"},
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["defaultCurrency"] == "EUR"

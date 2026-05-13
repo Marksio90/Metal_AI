@@ -8,7 +8,7 @@ from uuid import uuid4
 from dataclasses import asdict
 from pydantic import BaseModel, ValidationError
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import BackendSettings
@@ -26,29 +26,44 @@ from app.schemas import (
     SaveRFQAnalysisRequest,
     EstimatorFeedbackRequest,
     FeedbackDiffResponse,
-<<<<<<< codex/build-rfq-input-layer
     AttachmentMetadataResponse,
-=======
->>>>>>> main
+    CompanyConfigRequest,
+    CompanyConfigResponse,
+    AttachmentMetadataResponse,
     RiskFlagResponse,
 )
 from app.services.llm_service import BackendAPIError, LLMService, build_provider
 from app.db import Base, SessionLocal, engine
-<<<<<<< codex/build-rfq-input-layer
+from app.persistence_models import AuditLog, CompanyConfig, EstimatorFeedback, QuoteDraft, RFQ, RFQAttachmentMetadata
 from app.persistence_models import EstimatorFeedback, QuoteDraft, RFQ, RFQAttachmentMetadata
-=======
-from app.persistence_models import EstimatorFeedback, QuoteDraft, RFQ
->>>>>>> main
 from metal_calc.engine.rfq_intake import check_rfq_completeness
 from metal_calc.engine.risk_rules import evaluate_rfq_risk_flags
 from metal_calc.costing import calculate_preliminary_cost, load_company_rates
 from metal_calc.models import CustomerInfo, FinishSpec, MaterialSpec, PartSpec, QuantityBreak, RFQInput, OperationType
 from metal_calc.routing import generate_route
-<<<<<<< codex/build-rfq-input-layer
 from pypdf import PdfReader
 from io import BytesIO
-=======
->>>>>>> main
+
+
+
+
+def get_security_context(
+    x_org_id: str = Header(default="default-org"),
+    x_user_id: str = Header(default="system"),
+    x_role: str = Header(default="viewer"),
+) -> dict:
+    allowed_roles = {"admin", "estimator", "sales", "viewer"}
+    if x_role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Invalid role")
+    return {"org_id": x_org_id, "user_id": x_user_id, "role": x_role}
+
+
+def write_audit(db, ctx: dict, action: str, resource_type: str, resource_id: str, details: dict) -> None:
+    db.add(AuditLog(organization_id=ctx["org_id"], actor_id=ctx["user_id"], actor_role=ctx["role"], action=action, resource_type=resource_type, resource_id=resource_id, details=details))
+
+from pypdf import PdfReader
+from io import BytesIO
+
 
 
 class RFQExtractionResult(BaseModel):
@@ -262,11 +277,12 @@ def quote_draft(payload: QuoteDraftRequest) -> QuoteDraftResponse:
 
 
 @app.post("/api/rfq/save-analysis")
-def save_rfq_analysis(payload: SaveRFQAnalysisRequest) -> dict:
+def save_rfq_analysis(payload: SaveRFQAnalysisRequest, ctx: dict = Depends(get_security_context)) -> dict:
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        row = RFQ(rfq_id=payload.analysis.rfqId, customer=payload.customer, message=payload.message)
+        row = RFQ(organization_id=ctx["org_id"], rfq_id=payload.analysis.rfqId, customer=payload.customer, message=payload.message)
+        write_audit(db, ctx, "save_analysis", "rfq", payload.analysis.rfqId, {"customer": payload.customer})
         db.add(row)
         db.commit()
     finally:
@@ -275,11 +291,12 @@ def save_rfq_analysis(payload: SaveRFQAnalysisRequest) -> dict:
 
 
 @app.post("/api/rfq/save-quote-draft")
-def save_quote_draft(payload: QuoteDraftRequest) -> dict:
+def save_quote_draft(payload: QuoteDraftRequest, ctx: dict = Depends(get_security_context)) -> dict:
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         row = QuoteDraft(
+            organization_id=ctx["org_id"],
             rfq_id=payload.rfqAnalysis.rfqId,
             customer_facing_response=payload.rfqAnalysis.draftCustomerReply,
             internal_notes={"notes": payload.rfqAnalysis.internalNotes},
@@ -289,6 +306,7 @@ def save_quote_draft(payload: QuoteDraftRequest) -> dict:
             is_preliminary=len(payload.rfqAnalysis.missingInformation) > 0,
         )
         db.add(row)
+        write_audit(db, ctx, "save_quote_draft", "quote_draft", payload.rfqAnalysis.rfqId, {})
         db.commit()
     finally:
         db.close()
@@ -296,11 +314,12 @@ def save_quote_draft(payload: QuoteDraftRequest) -> dict:
 
 
 @app.post("/api/rfq/feedback")
-def save_feedback(payload: EstimatorFeedbackRequest) -> dict:
+def save_feedback(payload: EstimatorFeedbackRequest, ctx: dict = Depends(get_security_context)) -> dict:
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         row = EstimatorFeedback(
+            organization_id=ctx["org_id"],
             rfq_id=payload.rfqId,
             decision=payload.decision,
             corrected_material=payload.correctedMaterial,
@@ -319,11 +338,11 @@ def save_feedback(payload: EstimatorFeedbackRequest) -> dict:
 
 
 @app.get("/api/rfq/feedback-diff/{rfq_id}", response_model=FeedbackDiffResponse)
-def feedback_diff(rfq_id: str) -> FeedbackDiffResponse:
+def feedback_diff(rfq_id: str, ctx: dict = Depends(get_security_context)) -> FeedbackDiffResponse:
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        feedback = db.query(EstimatorFeedback).filter(EstimatorFeedback.rfq_id == rfq_id).order_by(EstimatorFeedback.id.desc()).first()
+        feedback = db.query(EstimatorFeedback).filter(EstimatorFeedback.rfq_id == rfq_id, EstimatorFeedback.organization_id == ctx["org_id"]).order_by(EstimatorFeedback.id.desc()).first()
         if feedback is None:
             raise HTTPException(status_code=404, detail="No feedback found for RFQ")
 
@@ -348,7 +367,10 @@ def feedback_diff(rfq_id: str) -> FeedbackDiffResponse:
         return FeedbackDiffResponse(rfqId=rfq_id, aiSuggestion=ai_suggestion, humanCorrection=human, differences=diffs)
     finally:
         db.close()
-<<<<<<< codex/build-rfq-input-layer
+
+
+@app.post("/api/rfq/upload-attachment", response_model=AttachmentMetadataResponse)
+async def upload_attachment(rfq_id: str = Form(...), file: UploadFile = File(...), ctx: dict = Depends(get_security_context)) -> AttachmentMetadataResponse:
 
 
 @app.post("/api/rfq/upload-attachment", response_model=AttachmentMetadataResponse)
@@ -376,6 +398,7 @@ async def upload_attachment(rfq_id: str = Form(...), file: UploadFile = File(...
     db = SessionLocal()
     try:
         row = RFQAttachmentMetadata(
+            organization_id=ctx["org_id"],
             rfq_id=rfq_id,
             filename=filename,
             extension=ext,
@@ -396,5 +419,39 @@ async def upload_attachment(rfq_id: str = Form(...), file: UploadFile = File(...
         contentType=file.content_type or "application/octet-stream",
         extractedTextPreview=(extracted_text[:500] if extracted_text else None),
     )
-=======
->>>>>>> main
+
+
+@app.post("/api/company/config", response_model=CompanyConfigResponse)
+def upsert_company_config(payload: CompanyConfigRequest, ctx: dict = Depends(get_security_context)) -> CompanyConfigResponse:
+    if ctx["role"] not in {"admin"}:
+        raise HTTPException(status_code=403, detail="Admin role required")
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        row = db.query(CompanyConfig).filter(CompanyConfig.organization_id == ctx["org_id"]).first()
+        if row is None:
+            row = CompanyConfig(organization_id=ctx["org_id"], company_name=payload.companyName, default_currency=payload.defaultCurrency, default_language=payload.defaultLanguage)
+            db.add(row)
+        else:
+            row.company_name = payload.companyName
+            row.default_currency = payload.defaultCurrency
+            row.default_language = payload.defaultLanguage
+        write_audit(db, ctx, "upsert_company_config", "company_config", ctx["org_id"], payload.model_dump())
+        db.commit()
+        return CompanyConfigResponse(organizationId=ctx["org_id"], companyName=row.company_name, defaultCurrency=row.default_currency, defaultLanguage=row.default_language)
+    finally:
+        db.close()
+
+
+@app.get("/api/company/config", response_model=CompanyConfigResponse)
+def get_company_config(ctx: dict = Depends(get_security_context)) -> CompanyConfigResponse:
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        row = db.query(CompanyConfig).filter(CompanyConfig.organization_id == ctx["org_id"]).first()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Company config not found")
+        return CompanyConfigResponse(organizationId=ctx["org_id"], companyName=row.company_name, defaultCurrency=row.default_currency, defaultLanguage=row.default_language)
+    finally:
+        db.close()
+
