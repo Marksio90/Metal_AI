@@ -113,3 +113,18 @@ dmypy.json
 # ---------------------------------------------------------------------------
 .docker/
 docker-compose.override.yml
+
+# Frontend artifacts
+node_modules/
+.next/
+out/
+
+# Local environment files
+.env.local
+.env.*.local
+
+# Backend/cache artifacts
+__pycache__/
+*.py[cod]
+
+!.env.example
