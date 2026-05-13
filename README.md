@@ -8,6 +8,7 @@ Projekt pomaga zespołom handlowym, technologicznym i operacyjnym szybciej przec
 ## Spis treści
 
 - [Czym jest Metal_AI](#czym-jest-metal_ai)
+- [Product Mission](#product-mission)
 - [Quickstart](#quickstart)
 - [URL-e lokalnych usług](#url-e-lokalnych-usług)
 - [Architektura projektu](#architektura-projektu)
@@ -28,6 +29,17 @@ Metal_AI to asystent AI zaprojektowany pod potrzeby firm produkcyjnych (szczegó
 - centralizuje logikę domenową związaną z kalkulacją i analizą danych produkcyjnych.
 
 Docelowo projekt ma skracać czas reakcji na zapytania, zwiększać spójność procesu wyceny i ograniczać błędy wynikające z ręcznej analizy.
+
+---
+
+
+## Product Mission
+
+Metal_AI is being developed as an **enterprise AI-powered RFQ and cost estimation operating system** for metal manufacturing companies.
+
+Its core objective is to transform unstructured inquiries (emails, RFQ text, drawings, CAD/visual attachments, and partial technical data) into structured RFQ intelligence, risk visibility, routing proposals, preliminary costing, and quote support artifacts.
+
+For the full mission definition and target capability scope, see [PRODUCT_MISSION.md](./PRODUCT_MISSION.md).
 
 ---
 
