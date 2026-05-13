@@ -23,9 +23,13 @@ from app.schemas import (
     RFQAnalyzeResponse,
     QuoteDraftRequest,
     QuoteDraftResponse,
+    SaveRFQAnalysisRequest,
+    EstimatorFeedbackRequest,
     RiskFlagResponse,
 )
 from app.services.llm_service import BackendAPIError, LLMService, build_provider
+from app.db import Base, SessionLocal, engine
+from app.persistence_models import EstimatorFeedback, QuoteDraft, RFQ
 from metal_calc.engine.rfq_intake import check_rfq_completeness
 from metal_calc.engine.risk_rules import evaluate_rfq_risk_flags
 from metal_calc.costing import calculate_preliminary_cost, load_company_rates
@@ -51,6 +55,10 @@ llm_service = LLMService(
 logger = logging.getLogger("backend.api")
 
 app = FastAPI(title=settings.app_name)
+
+@app.on_event("startup")
+def init_db() -> None:
+    Base.metadata.create_all(bind=engine)
 
 app.add_middleware(
     CORSMiddleware,
@@ -237,3 +245,50 @@ def quote_draft(payload: QuoteDraftRequest) -> QuoteDraftResponse:
         riskWarnings=risk_warnings,
         isPreliminary=is_preliminary,
     )
+
+
+@app.post("/api/rfq/save-analysis")
+def save_rfq_analysis(payload: SaveRFQAnalysisRequest) -> dict:
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        row = RFQ(rfq_id=payload.analysis.rfqId, customer=payload.customer, message=payload.message)
+        db.add(row)
+        db.commit()
+    finally:
+        db.close()
+    return {"saved": True, "rfqId": payload.analysis.rfqId}
+
+
+@app.post("/api/rfq/save-quote-draft")
+def save_quote_draft(payload: QuoteDraftRequest) -> dict:
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        row = QuoteDraft(
+            rfq_id=payload.rfqAnalysis.rfqId,
+            customer_facing_response=payload.rfqAnalysis.draftCustomerReply,
+            internal_notes={"notes": payload.rfqAnalysis.internalNotes},
+            assumptions={"items": payload.rfqAnalysis.customerQuestions},
+            clarification_questions={"items": payload.rfqAnalysis.customerQuestions},
+            risk_warnings={"items": payload.rfqAnalysis.riskFlags},
+            is_preliminary=len(payload.rfqAnalysis.missingInformation) > 0,
+        )
+        db.add(row)
+        db.commit()
+    finally:
+        db.close()
+    return {"saved": True, "rfqId": payload.rfqAnalysis.rfqId}
+
+
+@app.post("/api/rfq/feedback")
+def save_feedback(payload: EstimatorFeedbackRequest) -> dict:
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        row = EstimatorFeedback(rfq_id=payload.rfqId, decision=payload.decision, comment=payload.comment)
+        db.add(row)
+        db.commit()
+    finally:
+        db.close()
+    return {"saved": True}

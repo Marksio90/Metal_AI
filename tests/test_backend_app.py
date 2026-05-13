@@ -144,3 +144,34 @@ def test_quote_draft_preliminary_and_separated_content(test_client):
     assert data["isPreliminary"] is True
     assert "preliminary" in data["customerFacingResponse"].lower()
     assert any("do not commit" in n.lower() for n in data["internalEstimatorNotes"])
+
+
+def test_persistence_save_analysis_quote_and_feedback(test_client):
+    analysis = test_client.post(
+        "/api/rfq/analyze",
+        json={
+            "customer": "Example Customer",
+            "message": "Please quote 20 pcs from S235 steel, 2 mm sheet, laser cut.",
+            "attachments": ["drawing.pdf"],
+            "quantity": 20,
+        },
+    ).json()
+
+    save_analysis = test_client.post(
+        "/api/rfq/save-analysis",
+        json={"customer": "Example Customer", "message": "RFQ body", "analysis": analysis},
+    )
+    assert save_analysis.status_code == 200
+    assert save_analysis.json()["saved"] is True
+
+    save_draft = test_client.post(
+        "/api/rfq/save-quote-draft",
+        json={"rfqAnalysis": analysis, "language": "en", "tone": "professional"},
+    )
+    assert save_draft.status_code == 200
+
+    feedback = test_client.post(
+        "/api/rfq/feedback",
+        json={"rfqId": analysis["rfqId"], "decision": "approved", "comment": "Looks good"},
+    )
+    assert feedback.status_code == 200

@@ -13,7 +13,7 @@ COPY apps/backend /app
 COPY src /app/src
 
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir fastapi uvicorn[standard] httpx
+    && pip install --no-cache-dir fastapi uvicorn[standard] httpx sqlalchemy psycopg[binary] alembic
 
 ENV PYTHONPATH=/app/src
 

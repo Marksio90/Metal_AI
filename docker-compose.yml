@@ -9,6 +9,8 @@ services:
       - .env
     ports:
       - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://metal:metal@postgres:5432/metal_ai}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -27,3 +29,18 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    profiles: ["db"]
+    environment:
+      POSTGRES_DB: metal_ai
+      POSTGRES_USER: metal
+      POSTGRES_PASSWORD: metal
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

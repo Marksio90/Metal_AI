@@ -100,3 +100,15 @@ class QuoteDraftResponse(BaseModel):
     clarificationQuestions: list[str]
     riskWarnings: list[str]
     isPreliminary: bool
+
+
+class SaveRFQAnalysisRequest(BaseModel):
+    customer: str
+    message: str
+    analysis: RFQAnalyzeResponse
+
+
+class EstimatorFeedbackRequest(BaseModel):
+    rfqId: str
+    decision: str
+    comment: str
