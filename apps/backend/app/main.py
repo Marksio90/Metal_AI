@@ -15,8 +15,13 @@ from app.schemas import (
     ChatRequest,
     ChatResponse,
     HealthResponse,
+    RFQIntakeRequest,
+    RFQIntakeResponse,
+    RiskFlagResponse,
 )
 from app.services.llm_service import BackendAPIError, LLMService
+from metal_calc.engine.rfq_intake import check_rfq_completeness
+from metal_calc.engine.risk_rules import evaluate_rfq_risk_flags
 
 settings = BackendSettings()
 llm_service = LLMService(
@@ -84,4 +89,21 @@ async def chat(payload: ChatRequest) -> ChatResponse:
         message=llm_result.message,
         model=llm_result.model,
         usage=llm_result.usage,
+    )
+
+
+@app.post("/api/rfq/intake-check", response_model=RFQIntakeResponse)
+def rfq_intake_check(payload: RFQIntakeRequest) -> RFQIntakeResponse:
+    intake = check_rfq_completeness(payload.rfqData)
+    risk_flags = evaluate_rfq_risk_flags(payload.rfqData)
+    return RFQIntakeResponse(
+        status=intake.status.value,
+        readyForCalculation=intake.ready_for_calculation,
+        missingCritical=intake.missing_critical,
+        missingAdvisory=intake.missing_advisory,
+        warnings=intake.warnings,
+        riskFlags=[
+            RiskFlagResponse(code=f.code, severity=f.severity, message=f.message)
+            for f in risk_flags
+        ],
     )
