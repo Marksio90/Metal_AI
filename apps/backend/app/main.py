@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import time
 from uuid import uuid4
+from dataclasses import asdict
+from pydantic import BaseModel, ValidationError
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,19 +17,38 @@ from app.schemas import (
     ChatRequest,
     ChatResponse,
     HealthResponse,
+    RFQIntakeRequest,
+    RFQIntakeResponse,
+    RFQAnalyzeRequest,
+    RFQAnalyzeResponse,
+    RiskFlagResponse,
 )
-from app.services.llm_service import BackendAPIError, LLMService
+from app.services.llm_service import BackendAPIError, LLMService, build_provider
+from metal_calc.engine.rfq_intake import check_rfq_completeness
+from metal_calc.engine.risk_rules import evaluate_rfq_risk_flags
+from metal_calc.costing import calculate_preliminary_cost, load_company_rates
+from metal_calc.models import CustomerInfo, FinishSpec, MaterialSpec, PartSpec, QuantityBreak, RFQInput, OperationType
+from metal_calc.routing import generate_route
 
-settings = BackendSettings()
+
+class RFQExtractionResult(BaseModel):
+    detectedParts: list[dict] = []
+    material: str | None = None
+    thicknessMm: float | None = None
+    quantity: int | None = None
+    finish: str | None = None
+    toleranceRisk: bool = False
+    operations: list[str] = []
+
+settings = BackendSettings.from_env()
 llm_service = LLMService(
-    model_name=settings.default_model,
-    provider=settings.provider,
-    timeout_seconds=settings.request_timeout_seconds,
+    provider=build_provider(settings),
+    timeout_seconds=settings.openai_timeout_seconds,
 )
 
 logger = logging.getLogger("backend.api")
 
-app = FastAPI(title=settings.project)
+app = FastAPI(title=settings.app_name)
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,15 +76,15 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/health", response_model=HealthResponse)
 def healthcheck() -> HealthResponse:
-    return HealthResponse(status="ok", service="backend", project=settings.project)
+    return HealthResponse(status="ok", service="backend", project=settings.app_name)
 
 
 @app.get("/api/config", response_model=APIConfigResponse)
 def api_config() -> APIConfigResponse:
     return APIConfigResponse(
-        project=settings.project,
-        llmProvider=settings.provider,
-        model=settings.default_model,
+        project=settings.app_name,
+        llmProvider=settings.llm_provider,
+        model=settings.openai_model,
     )
 
 
@@ -84,4 +105,85 @@ async def chat(payload: ChatRequest) -> ChatResponse:
         message=llm_result.message,
         model=llm_result.model,
         usage=llm_result.usage,
+    )
+
+
+@app.post("/api/rfq/intake-check", response_model=RFQIntakeResponse)
+def rfq_intake_check(payload: RFQIntakeRequest) -> RFQIntakeResponse:
+    intake = check_rfq_completeness(payload.rfqData)
+    risk_flags = evaluate_rfq_risk_flags(payload.rfqData)
+    return RFQIntakeResponse(
+        status=intake.status.value,
+        readyForCalculation=intake.ready_for_calculation,
+        missingCritical=intake.missing_critical,
+        missingAdvisory=intake.missing_advisory,
+        warnings=intake.warnings,
+        riskFlags=[
+            RiskFlagResponse(code=f.code, severity=f.severity, message=f.message)
+            for f in risk_flags
+        ],
+    )
+
+
+@app.post("/api/rfq/analyze", response_model=RFQAnalyzeResponse)
+async def analyze_rfq(payload: RFQAnalyzeRequest) -> RFQAnalyzeResponse:
+    rfq_id = str(uuid4())
+    try:
+        extracted_raw = await llm_service.extract_rfq_structured(payload.message)
+        extracted = RFQExtractionResult.model_validate(extracted_raw)
+    except (BackendAPIError, ValidationError):
+        raise HTTPException(status_code=502, detail="RFQ analysis failed safely. Please verify input and retry.")
+
+    missing: list[str] = []
+    if not extracted.material or extracted.material == "unknown_material":
+        missing.append("material")
+    if extracted.thicknessMm is None:
+        missing.append("thickness_mm")
+    if (payload.quantity or extracted.quantity or 0) <= 0:
+        missing.append("quantity")
+    if not extracted.finish:
+        missing.append("finishing_details")
+    if not payload.attachments:
+        missing.append("drawing_attachment")
+
+    risks: list[str] = []
+    if extracted.toleranceRisk:
+        risks.append("risky_tolerances")
+    if "drawing_attachment" in missing:
+        risks.append("no_drawing_provided")
+
+    suggested_route = extracted.operations or ["manual_review"]
+
+    internal_notes = ["Deterministic post-processing applied to LLM extraction output."]
+    preliminary_cost = None
+    try:
+        rfq_input = RFQInput(
+            customer=CustomerInfo(name=payload.customer),
+            part=PartSpec(part_name="part_1", mass_kg=1.0),
+            material=MaterialSpec(material_code=extracted.material or "unknown_material", thickness_mm=extracted.thicknessMm),
+            finish=FinishSpec(finish_code=extracted.finish or "unknown_finish"),
+            quantity_break=QuantityBreak(quantity=payload.quantity or extracted.quantity or 0),
+            requested_operations=[OperationType(op) for op in suggested_route if op in {e.value for e in OperationType}],
+        )
+        route = generate_route(rfq_input)
+        rates = load_company_rates()
+        preliminary_cost = asdict(calculate_preliminary_cost(rfq_input, route, rates))
+    except Exception as exc:
+        internal_notes.append(f"Preliminary costing skipped due to incomplete structured data: {type(exc).__name__}.")
+    customer_questions = [f"Please provide missing: {m}." for m in missing]
+    confidence = 0.85 if not missing else 0.45
+
+    draft_reply = "Thank you for your RFQ. To prepare a reliable quotation, please provide: " + ", ".join(missing) + "." if missing else "Thank you for your RFQ. We have enough initial data and will send a quotation draft shortly."
+
+    return RFQAnalyzeResponse(
+        rfqId=rfq_id,
+        detectedParts=extracted.detectedParts,
+        missingInformation=missing,
+        suggestedRoute=suggested_route,
+        riskFlags=risks,
+        internalNotes=internal_notes,
+        customerQuestions=customer_questions,
+        draftCustomerReply=draft_reply,
+        preliminaryCost=preliminary_cost,
+        confidence=confidence,
     )
