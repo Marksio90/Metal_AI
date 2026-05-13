@@ -45,3 +45,22 @@ class ServiceChatResponse(BaseModel):
     message: str
     model: str
     usage: Usage
+
+
+class RFQIntakeRequest(BaseModel):
+    rfqData: dict
+
+
+class RiskFlagResponse(BaseModel):
+    code: str
+    severity: str
+    message: str
+
+
+class RFQIntakeResponse(BaseModel):
+    status: str
+    readyForCalculation: bool
+    missingCritical: list[str]
+    missingAdvisory: list[str]
+    warnings: list[str]
+    riskFlags: list[RiskFlagResponse]
