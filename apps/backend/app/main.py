@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from uuid import uuid4
+from pydantic import BaseModel, ValidationError
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,11 +18,23 @@ from app.schemas import (
     HealthResponse,
     RFQIntakeRequest,
     RFQIntakeResponse,
+    RFQAnalyzeRequest,
+    RFQAnalyzeResponse,
     RiskFlagResponse,
 )
 from app.services.llm_service import BackendAPIError, LLMService, build_provider
 from metal_calc.engine.rfq_intake import check_rfq_completeness
 from metal_calc.engine.risk_rules import evaluate_rfq_risk_flags
+
+
+class RFQExtractionResult(BaseModel):
+    detectedParts: list[dict] = []
+    material: str | None = None
+    thicknessMm: float | None = None
+    quantity: int | None = None
+    finish: str | None = None
+    toleranceRisk: bool = False
+    operations: list[str] = []
 
 settings = BackendSettings.from_env()
 llm_service = LLMService(
@@ -105,4 +118,48 @@ def rfq_intake_check(payload: RFQIntakeRequest) -> RFQIntakeResponse:
             RiskFlagResponse(code=f.code, severity=f.severity, message=f.message)
             for f in risk_flags
         ],
+    )
+
+
+@app.post("/api/rfq/analyze", response_model=RFQAnalyzeResponse)
+async def analyze_rfq(payload: RFQAnalyzeRequest) -> RFQAnalyzeResponse:
+    rfq_id = str(uuid4())
+    try:
+        extracted_raw = await llm_service.extract_rfq_structured(payload.message)
+        extracted = RFQExtractionResult.model_validate(extracted_raw)
+    except (BackendAPIError, ValidationError):
+        raise HTTPException(status_code=502, detail="RFQ analysis failed safely. Please verify input and retry.")
+
+    missing: list[str] = []
+    if not extracted.material or extracted.material == "unknown_material":
+        missing.append("material")
+    if extracted.thicknessMm is None:
+        missing.append("thickness_mm")
+    if (payload.quantity or extracted.quantity or 0) <= 0:
+        missing.append("quantity")
+    if not extracted.finish:
+        missing.append("finishing_details")
+    if not payload.attachments:
+        missing.append("drawing_attachment")
+
+    risks: list[str] = []
+    if extracted.toleranceRisk:
+        risks.append("risky_tolerances")
+    if "drawing_attachment" in missing:
+        risks.append("no_drawing_provided")
+
+    suggested_route = extracted.operations or ["manual_review"]
+    customer_questions = [f"Please provide missing: {m}." for m in missing]
+    internal_notes = ["Deterministic post-processing applied to LLM extraction output."]
+    confidence = 0.85 if not missing else 0.45
+
+    return RFQAnalyzeResponse(
+        rfqId=rfq_id,
+        detectedParts=extracted.detectedParts,
+        missingInformation=missing,
+        suggestedRoute=suggested_route,
+        riskFlags=risks,
+        internalNotes=internal_notes,
+        customerQuestions=customer_questions,
+        confidence=confidence,
     )

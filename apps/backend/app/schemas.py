@@ -64,3 +64,21 @@ class RFQIntakeResponse(BaseModel):
     missingAdvisory: list[str]
     warnings: list[str]
     riskFlags: list[RiskFlagResponse]
+
+
+class RFQAnalyzeRequest(BaseModel):
+    customer: str
+    message: str
+    attachments: list[str] = Field(default_factory=list)
+    quantity: int | None = None
+
+
+class RFQAnalyzeResponse(BaseModel):
+    rfqId: str
+    detectedParts: list[dict]
+    missingInformation: list[str]
+    suggestedRoute: list[str]
+    riskFlags: list[str]
+    internalNotes: list[str]
+    customerQuestions: list[str]
+    confidence: float

@@ -82,3 +82,36 @@ def test_chat_works_in_mock_mode(test_client):
     assert response.status_code == 200
     data = response.json()
     assert "[MOCK:" in data["message"]
+
+
+def test_rfq_analyze_valid_payload(test_client):
+    response = test_client.post(
+        "/api/rfq/analyze",
+        json={
+            "customer": "Example Customer",
+            "message": "Please quote 50 pcs from S235 steel, 3 mm sheet, laser cut, bent twice, powder coated black.",
+            "attachments": ["drawing.pdf"],
+            "quantity": 50,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["rfqId"]
+    assert data["missingInformation"] == []
+    assert "laser_cutting" in data["suggestedRoute"]
+
+
+def test_rfq_analyze_incomplete_payload(test_client):
+    response = test_client.post(
+        "/api/rfq/analyze",
+        json={
+            "customer": "Example Customer",
+            "message": "Please quote this part.",
+            "attachments": [],
+            "quantity": 0,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "material" in data["missingInformation"]
+    assert "drawing_attachment" in data["missingInformation"]
