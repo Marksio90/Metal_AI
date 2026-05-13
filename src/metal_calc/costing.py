@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,8 +23,150 @@ class PreliminaryCostResult:
     warnings: list[str]
 
 
-def load_company_rates(path: str = "config/company_rates.example.json") -> dict:
-    return json.loads(Path(path).read_text())
+@dataclass(slots=True)
+class OperationCostInput:
+    operationType: str
+    quantity: int
+    timePerPieceSeconds: float
+    setupTimeSeconds: float
+    laborRatePerHour: float
+    laborMarkup: float
+    departmentOverheadFactor: float
+    generalOverheadFactor: float
+    workCenter: str | None = None
+
+
+@dataclass(slots=True)
+class DeterministicCostResult:
+    assumptions: list[str]
+    missingData: list[str]
+    operationCosts: list[dict]
+    materialCosts: dict
+    packagingCosts: dict
+    finishingCosts: dict
+    riskBuffer: dict
+    margin: dict
+    confidence: str
+    requiresHumanReview: bool
+    productionCost: float
+    priceBeforeMargin: float
+    sellingPrice: float
+    finalPrice: float
+
+
+def load_company_rates(path: str | None = None) -> dict:
+    """Load private company rates first, fallback to non-confidential example config."""
+
+    if path is not None:
+        return json.loads(Path(path).read_text())
+
+    env_path = os.getenv("METAL_AI_COMPANY_RATES_PATH")
+    candidate_paths = [
+        env_path,
+        "config/private/company_rates.json",
+        "config/company_rates.example.json",
+    ]
+
+    for candidate in candidate_paths:
+        if candidate and Path(candidate).exists():
+            return json.loads(Path(candidate).read_text())
+
+    raise FileNotFoundError("No company rates config found in env/private/example paths.")
+
+
+def calculate_operation_cost(operation: OperationCostInput) -> dict:
+    total_operation_time_seconds = operation.setupTimeSeconds + (operation.timePerPieceSeconds * operation.quantity)
+    operation_hours = total_operation_time_seconds / 3600.0
+
+    direct_labor_cost = operation_hours * operation.laborRatePerHour * (1.0 + operation.laborMarkup)
+    department_overhead_cost = direct_labor_cost * operation.departmentOverheadFactor
+    general_overhead_cost = direct_labor_cost * operation.generalOverheadFactor
+    operation_total_cost = direct_labor_cost + department_overhead_cost + general_overhead_cost
+
+    return {
+        "operationType": operation.operationType,
+        "workCenter": operation.workCenter,
+        "quantity": operation.quantity,
+        "timeSeconds": {
+            "setup": operation.setupTimeSeconds,
+            "perPiece": operation.timePerPieceSeconds,
+            "total": total_operation_time_seconds,
+        },
+        "operationHours": operation_hours,
+        "directLaborCost": direct_labor_cost,
+        "departmentOverheadCost": department_overhead_cost,
+        "generalOverheadCost": general_overhead_cost,
+        "operationTotalCost": operation_total_cost,
+    }
+
+
+def calculate_deterministic_cost(
+    *,
+    currency: str,
+    material_cost: float,
+    material_procurement_markup: float,
+    operations: list[OperationCostInput],
+    finishing_cost: float,
+    packaging_cost: float,
+    subcontracting_cost: float,
+    special_costs: float,
+    risk_buffer: float,
+    sales_markup_percent: float,
+    rounding_digits: int = 2,
+) -> DeterministicCostResult:
+    assumptions = [
+        "Costing is deterministic and formula-based (not generated from LLM free text).",
+        "Operation cost = direct labor + department overhead + general overhead.",
+        "Selling price = (production cost + risk buffer) × (1 + sales markup).",
+    ]
+    missing_data: list[str] = []
+
+    operation_cost_rows = []
+    for operation in operations:
+        if operation.laborRatePerHour <= 0:
+            missing_data.append(f"Missing/invalid labor rate for {operation.operationType}")
+        if operation.timePerPieceSeconds < 0 or operation.setupTimeSeconds < 0:
+            missing_data.append(f"Negative time input for {operation.operationType}")
+        operation_cost_rows.append(calculate_operation_cost(operation))
+
+    total_operation_cost = sum(row["operationTotalCost"] for row in operation_cost_rows)
+
+    production_cost = (
+        material_cost
+        + material_procurement_markup
+        + total_operation_cost
+        + finishing_cost
+        + packaging_cost
+        + subcontracting_cost
+        + special_costs
+    )
+    price_before_margin = production_cost + risk_buffer
+    selling_price = price_before_margin * (1.0 + sales_markup_percent)
+    final_price = round(selling_price, rounding_digits)
+
+    confidence = "high" if not missing_data else "medium"
+    requires_human_review = bool(missing_data)
+
+    return DeterministicCostResult(
+        assumptions=assumptions,
+        missingData=missing_data,
+        operationCosts=operation_cost_rows,
+        materialCosts={
+            "materialCost": material_cost,
+            "materialProcurementMarkup": material_procurement_markup,
+            "currency": currency,
+        },
+        packagingCosts={"packagingCost": packaging_cost, "currency": currency},
+        finishingCosts={"finishingCost": finishing_cost, "currency": currency},
+        riskBuffer={"riskBuffer": risk_buffer, "currency": currency},
+        margin={"salesMarkupPercent": sales_markup_percent, "currency": currency},
+        confidence=confidence,
+        requiresHumanReview=requires_human_review,
+        productionCost=production_cost,
+        priceBeforeMargin=price_before_margin,
+        sellingPrice=selling_price,
+        finalPrice=final_price,
+    )
 
 
 def calculate_preliminary_cost(rfq: RFQInput, route: ManufacturingRoute, rates: dict) -> PreliminaryCostResult:
