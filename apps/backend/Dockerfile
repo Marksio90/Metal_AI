@@ -10,9 +10,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY apps/backend /app
+COPY src /app/src
 
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir fastapi uvicorn[standard]
+    && pip install --no-cache-dir fastapi uvicorn[standard] httpx
+
+ENV PYTHONPATH=/app/src
 
 EXPOSE 8000
 
