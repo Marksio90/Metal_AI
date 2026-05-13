@@ -41,6 +41,8 @@ from metal_calc.engine.risk_rules import evaluate_rfq_risk_flags
 from metal_calc.costing import calculate_preliminary_cost, load_company_rates
 from metal_calc.models import CustomerInfo, FinishSpec, MaterialSpec, PartSpec, QuantityBreak, RFQInput, OperationType
 from metal_calc.routing import generate_route
+from metal_calc.knowledge import classify_operation, get_preferred_work_centers
+from metal_calc.time_estimation import OperationTimeEstimator
 from pypdf import PdfReader
 from io import BytesIO
 
@@ -167,63 +169,75 @@ def rfq_intake_check(payload: RFQIntakeRequest) -> RFQIntakeResponse:
 @app.post("/api/rfq/analyze", response_model=RFQAnalyzeResponse)
 async def analyze_rfq(payload: RFQAnalyzeRequest) -> RFQAnalyzeResponse:
     rfq_id = str(uuid4())
-    try:
-        extracted_raw = await llm_service.extract_rfq_structured(payload.message)
-        extracted = RFQExtractionResult.model_validate(extracted_raw)
-    except (BackendAPIError, ValidationError):
-        raise HTTPException(status_code=502, detail="RFQ analysis failed safely. Please verify input and retry.")
+    text = payload.message or ""
+
+    # Lightweight deterministic extraction fallback.
+    lower = text.lower()
+    quantity = payload.quantity
+    if quantity is None:
+        import re
+
+        match = re.search(r"\b(\d{1,7})\s*(pcs|szt|pieces)?\b", lower)
+        quantity = int(match.group(1)) if match else None
+
+    material = "steel" if any(k in lower for k in ["steel", "stal", "s235", "inox", "aluminium", "aluminum"]) else None
+    finish = "painting" if any(k in lower for k in ["paint", "powder", "malow"]) else ("galvanizing" if "cynk" in lower or "galvan" in lower else None)
+
+    extracted_ops = []
+    for token in ["laser", "bending", "gię", "weld", "spaw", "pack", "pakow", "assembly", "montaż"]:
+        if token in lower:
+            extracted_ops.append(token)
+
+    operation_names = extracted_ops or ["manual review"]
+    estimator = OperationTimeEstimator()
+    detected_operations = []
+    suggested_route: list[str] = []
+    for op_name in operation_names:
+        cls = classify_operation(op_name)
+        preferred = get_preferred_work_centers(cls.canonicalOperationType)
+        estimate = estimator.estimate(cls.canonicalOperationType, preferred[0] if preferred else None)
+        detected_operations.append(
+            {
+                "operationType": estimate["operationType"],
+                "workCenter": estimate["workCenter"],
+                "estimatedSeconds": estimate["estimatedSeconds"],
+                "sampleCount": estimate["sampleCount"],
+                "confidence": estimate["confidence"],
+            }
+        )
+        suggested_route.append(cls.canonicalOperationType)
 
     missing: list[str] = []
-    if not extracted.material or extracted.material == "unknown_material":
+    if not material:
         missing.append("material")
-    if extracted.thicknessMm is None:
-        missing.append("thickness_mm")
-    if (payload.quantity or extracted.quantity or 0) <= 0:
+    if not quantity or quantity <= 0:
         missing.append("quantity")
-    if not extracted.finish:
-        missing.append("finishing_details")
+    if not finish:
+        missing.append("finish")
     if not payload.attachments:
         missing.append("drawing_attachment")
 
-    risks: list[str] = []
-    if extracted.toleranceRisk:
-        risks.append("risky_tolerances")
+    risk_flags: list[str] = []
     if "drawing_attachment" in missing:
-        risks.append("no_drawing_provided")
+        risk_flags.append("no_drawing_provided")
+    if any(op["confidence"] in {"low", "insufficient"} for op in detected_operations):
+        risk_flags.append("low_historical_operation_confidence")
 
-    suggested_route = extracted.operations or ["manual_review"]
-
-    internal_notes = ["Deterministic post-processing applied to LLM extraction output."]
-    preliminary_cost = None
-    try:
-        rfq_input = RFQInput(
-            customer=CustomerInfo(name=payload.customer),
-            part=PartSpec(part_name="part_1", mass_kg=1.0),
-            material=MaterialSpec(material_code=extracted.material or "unknown_material", thickness_mm=extracted.thicknessMm),
-            finish=FinishSpec(finish_code=extracted.finish or "unknown_finish"),
-            quantity_break=QuantityBreak(quantity=payload.quantity or extracted.quantity or 0),
-            requested_operations=[OperationType(op) for op in suggested_route if op in {e.value for e in OperationType}],
-        )
-        route = generate_route(rfq_input)
-        rates = load_company_rates()
-        preliminary_cost = asdict(calculate_preliminary_cost(rfq_input, route, rates))
-    except Exception as exc:
-        internal_notes.append(f"Preliminary costing skipped due to incomplete structured data: {type(exc).__name__}.")
-    customer_questions = [f"Please provide missing: {m}." for m in missing]
-    confidence = 0.85 if not missing else 0.45
-
-    draft_reply = "Thank you for your RFQ. To prepare a reliable quotation, please provide: " + ", ".join(missing) + "." if missing else "Thank you for your RFQ. We have enough initial data and will send a quotation draft shortly."
+    requires_human_review = bool(missing) or any(op["confidence"] != "high" for op in detected_operations)
+    confidence = 0.9 if not requires_human_review else 0.45
 
     return RFQAnalyzeResponse(
         rfqId=rfq_id,
-        detectedParts=extracted.detectedParts,
+        detectedOperations=detected_operations,
         missingInformation=missing,
+        riskFlags=risk_flags,
+        requiresHumanReview=requires_human_review,
         suggestedRoute=suggested_route,
-        riskFlags=risks,
-        internalNotes=internal_notes,
-        customerQuestions=customer_questions,
-        draftCustomerReply=draft_reply,
-        preliminaryCost=preliminary_cost,
+        detectedParts=[],
+        internalNotes=["Deterministic RFQ analysis with historical baseline-driven operation timing."],
+        customerQuestions=[f"Please provide missing: {m}." for m in missing],
+        draftCustomerReply="Please provide missing RFQ data." if missing else "RFQ analyzed. Ready for estimator review.",
+        preliminaryCost=None,
         confidence=confidence,
     )
 
@@ -371,10 +385,6 @@ def feedback_diff(rfq_id: str, ctx: dict = Depends(get_security_context)) -> Fee
 
 @app.post("/api/rfq/upload-attachment", response_model=AttachmentMetadataResponse)
 async def upload_attachment(rfq_id: str = Form(...), file: UploadFile = File(...), ctx: dict = Depends(get_security_context)) -> AttachmentMetadataResponse:
-
-
-@app.post("/api/rfq/upload-attachment", response_model=AttachmentMetadataResponse)
-async def upload_attachment(rfq_id: str = Form(...), file: UploadFile = File(...)) -> AttachmentMetadataResponse:
     allowed_ext = {".pdf", ".png", ".jpg", ".jpeg", ".txt"}
     max_size = 10 * 1024 * 1024
     filename = file.filename or "unknown"
