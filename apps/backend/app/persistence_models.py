@@ -17,6 +17,18 @@ class RFQ(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class RFQAttachmentMetadata(Base):
+    __tablename__ = "rfq_attachment_metadata"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rfq_id: Mapped[str] = mapped_column(String(64), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    extension: Mapped[str] = mapped_column(String(20))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    content_type: Mapped[str] = mapped_column(String(100))
+    extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class QuoteDraft(Base):
     __tablename__ = "quote_draft"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

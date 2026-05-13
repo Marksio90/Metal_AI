@@ -125,3 +125,12 @@ class FeedbackDiffResponse(BaseModel):
     aiSuggestion: dict
     humanCorrection: dict
     differences: list[str]
+
+
+class AttachmentMetadataResponse(BaseModel):
+    rfqId: str
+    filename: str
+    extension: str
+    sizeBytes: int
+    contentType: str
+    extractedTextPreview: str | None = None

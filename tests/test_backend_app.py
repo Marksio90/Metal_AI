@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path("src").resolve()))
 
 import importlib
 import os
+import uuid
 
 from fastapi.testclient import TestClient
 import pytest
@@ -55,9 +56,8 @@ def test_chat_schema_validation():
 
 @pytest.fixture
 def test_client(monkeypatch):
-    if os.path.exists("test_feedback.db"):
-        os.remove("test_feedback.db")
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///./test_feedback.db")
+    db_name = f"test_feedback_{uuid.uuid4().hex}.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///./{db_name}")
     monkeypatch.setenv("LLM_PROVIDER", "mock")
     monkeypatch.setenv("OPENAI_MODEL", "mock-model")
     import app.main as main_module
@@ -179,3 +179,20 @@ def test_persistence_save_analysis_quote_and_feedback(test_client):
         json={"rfqId": analysis["rfqId"], "decision": "accepted", "correctedMaterial": "S355", "correctedOperationRoute": ["laser_cutting", "bending"], "correctedQuantity": 25, "correctedCost": 1500.0, "correctedMargin": 22.0, "correctionReason": "Material upgraded", "estimatorNote": "Customer requested stronger steel"},
     )
     assert feedback.status_code == 200
+
+
+def test_upload_attachment_metadata_and_limits(test_client):
+    analysis = test_client.post(
+        "/api/rfq/analyze",
+        json={"customer": "X", "message": "Please quote 5 pcs S235", "attachments": [], "quantity": 5},
+    ).json()
+
+    response = test_client.post(
+        "/api/rfq/upload-attachment",
+        data={"rfq_id": analysis["rfqId"]},
+        files={"file": ("spec.txt", b"material S235 thickness 2mm", "text/plain")},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["filename"] == "spec.txt"
+    assert data["extension"] == ".txt"

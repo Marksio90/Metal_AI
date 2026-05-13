@@ -8,7 +8,7 @@ from uuid import uuid4
 from dataclasses import asdict
 from pydantic import BaseModel, ValidationError
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import BackendSettings
@@ -26,16 +26,29 @@ from app.schemas import (
     SaveRFQAnalysisRequest,
     EstimatorFeedbackRequest,
     FeedbackDiffResponse,
+<<<<<<< codex/build-rfq-input-layer
+    AttachmentMetadataResponse,
+=======
+>>>>>>> main
     RiskFlagResponse,
 )
 from app.services.llm_service import BackendAPIError, LLMService, build_provider
 from app.db import Base, SessionLocal, engine
+<<<<<<< codex/build-rfq-input-layer
+from app.persistence_models import EstimatorFeedback, QuoteDraft, RFQ, RFQAttachmentMetadata
+=======
 from app.persistence_models import EstimatorFeedback, QuoteDraft, RFQ
+>>>>>>> main
 from metal_calc.engine.rfq_intake import check_rfq_completeness
 from metal_calc.engine.risk_rules import evaluate_rfq_risk_flags
 from metal_calc.costing import calculate_preliminary_cost, load_company_rates
 from metal_calc.models import CustomerInfo, FinishSpec, MaterialSpec, PartSpec, QuantityBreak, RFQInput, OperationType
 from metal_calc.routing import generate_route
+<<<<<<< codex/build-rfq-input-layer
+from pypdf import PdfReader
+from io import BytesIO
+=======
+>>>>>>> main
 
 
 class RFQExtractionResult(BaseModel):
@@ -335,3 +348,53 @@ def feedback_diff(rfq_id: str) -> FeedbackDiffResponse:
         return FeedbackDiffResponse(rfqId=rfq_id, aiSuggestion=ai_suggestion, humanCorrection=human, differences=diffs)
     finally:
         db.close()
+<<<<<<< codex/build-rfq-input-layer
+
+
+@app.post("/api/rfq/upload-attachment", response_model=AttachmentMetadataResponse)
+async def upload_attachment(rfq_id: str = Form(...), file: UploadFile = File(...)) -> AttachmentMetadataResponse:
+    allowed_ext = {".pdf", ".png", ".jpg", ".jpeg", ".txt"}
+    max_size = 10 * 1024 * 1024
+    filename = file.filename or "unknown"
+    ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
+    if ext not in allowed_ext:
+        raise HTTPException(status_code=400, detail="Unsupported file type.")
+
+    raw = await file.read()
+    if len(raw) > max_size:
+        raise HTTPException(status_code=413, detail="File too large. Max 10MB.")
+
+    extracted_text = None
+    if ext == ".pdf":
+        try:
+            reader = PdfReader(BytesIO(raw))
+            extracted_text = "\n".join((page.extract_text() or "") for page in reader.pages).strip()
+        except Exception:
+            extracted_text = None
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        row = RFQAttachmentMetadata(
+            rfq_id=rfq_id,
+            filename=filename,
+            extension=ext,
+            size_bytes=len(raw),
+            content_type=file.content_type or "application/octet-stream",
+            extracted_text=extracted_text,
+        )
+        db.add(row)
+        db.commit()
+    finally:
+        db.close()
+
+    return AttachmentMetadataResponse(
+        rfqId=rfq_id,
+        filename=filename,
+        extension=ext,
+        sizeBytes=len(raw),
+        contentType=file.content_type or "application/octet-stream",
+        extractedTextPreview=(extracted_text[:500] if extracted_text else None),
+    )
+=======
+>>>>>>> main
